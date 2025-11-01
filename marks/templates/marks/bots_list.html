@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Боты{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Боты</h2>
+
+<div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+  {% for bot in bots %}
+  <div class="col">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">
+          <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
+        </h5>
+        <p class="text-muted mb-0">Веток: {{ bot.branches.count }}</p>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted">Боты отсутствуют</p>
+  {% endfor %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">Создать бота</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-6">
+        <label class="form-label">Название бота</label>
+        {{ form.name|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

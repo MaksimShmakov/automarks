@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Продукты{% endblock %}
+{% block content %}
+<h2 class="mb-3">Продукты</h2>
+
+<div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+  {% for p in products %}
+  <div class="col">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5><a href="{% url 'product_detail' p.id %}">{{ p.name }}</a></h5>
+        <div class="text-muted">Ботов: {{ p.bots.count }} · Активен: {{ p.is_active|yesno:"Да,Нет" }}</div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted">Нет продуктов</p>
+  {% endfor %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header bg-light"><b>Создать продукт</b></div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-6">
+        <label class="form-label">Название</label>
+        {{ form.name|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Активен</label>
+        {{ form.is_active }}
+      </div>
+      <div class="col-12"><button class="btn btn-primary">Создать</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

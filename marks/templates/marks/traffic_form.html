@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Добавить отчёт{% endblock %}
+{% block content %}
+<h2 class="mb-3">Добавить отчёт по трафику</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-3">
+        <label class="form-label">Продукт</label>
+        {{ form.product|add_class:"form-select" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Месяц</label>
+        {{ form.month|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Платформа</label>
+        {{ form.platform|add_class:"form-select" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Поставщик</label>
+        {{ form.vendor|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Расход</label>
+        {{ form.spend|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Показы</label>
+        {{ form.impressions|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Клики</label>
+        {{ form.clicks|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Тёплые лиды</label>
+        {{ form.leads_warm|add_class:"form-control" }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Холодные лиды</label>
+        {{ form.leads_cold|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Заметки</label>
+        {{ form.notes|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

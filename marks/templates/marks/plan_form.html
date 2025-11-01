@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Создать план{% endblock %}
+{% block content %}
+<h2 class="mb-3">Создать помесячный план</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-4">
+        <label class="form-label">Продукт</label>
+        {{ form.product|add_class:"form-select" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Месяц (YYYY-MM-01)</label>
+        {{ form.month|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Бюджет</label>
+        {{ form.budget|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Выручка (план)</label>
+        {{ form.revenue_target|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Тёплые лиды (план)</label>
+        {{ form.warm_leads_target|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Холодные лиды (план)</label>
+        {{ form.cold_leads_target|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Заметки</label>
+        {{ form.notes|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary">Создать</button>
+      </div>
+    </form>
+  </div>
+  </div>
+{% endblock %}
+

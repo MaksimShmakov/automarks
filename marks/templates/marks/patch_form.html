@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Создать патчноут{% endblock %}
+{% block content %}
+<h2 class="mb-3">Создать патчноут</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-6">
+        <label class="form-label">Ветка</label>
+        {{ form.branch|add_class:"form-select" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Заголовок</label>
+        {{ form.title|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Тип изменения</label>
+        {{ form.change_type|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Описание изменений</label>
+        {{ form.change_description|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

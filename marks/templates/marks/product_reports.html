@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Планы и отчёты — {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Планы и отчёты по продукту: {{ product.name }}</h2>
+  <a href="{% url 'bots_list' %}" class="btn btn-secondary">Назад</a>
+  </div>
+
+<!-- Таблица планов -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light"><strong>Таблица планов</strong></div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Месяц</th>
+          <th>Бюджет</th>
+          <th>Выручка (план)</th>
+          <th>Тёплые лиды (план)</th>
+          <th>Холодные лиды (план)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for plan in plans %}
+        <tr>
+          <td>{{ plan.month|date:"F Y" }}</td>
+          <td contenteditable="true" data-id="{{ plan.id }}" data-field="budget" data-model="plan">{{ plan.budget }}</td>
+          <td contenteditable="true" data-id="{{ plan.id }}" data-field="revenue_target" data-model="plan">{{ plan.revenue_target }}</td>
+          <td contenteditable="true" data-id="{{ plan.id }}" data-field="warm_leads_target" data-model="plan">{{ plan.warm_leads_target }}</td>
+          <td contenteditable="true" data-id="{{ plan.id }}" data-field="cold_leads_target" data-model="plan">{{ plan.cold_leads_target }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-muted">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+
+<!-- Таблица отчётов -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+    <strong>Отчёты по продукту</strong>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Месяц</th>
+          <th>Платформа</th>
+          <th>Поставщик</th>
+          <th>Расход</th>
+          <th>Клики</th>
+          <th>Тёплые лиды</th>
+          <th>Холодные лиды</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td>{{ r.month|date:"F Y" }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="platform" data-model="report">{{ r.platform }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="vendor" data-model="report">{{ r.vendor|default:"" }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="spend" data-model="report">{{ r.spend }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="clicks" data-model="report">{{ r.clicks }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="leads_warm" data-model="report">{{ r.leads_warm }}</td>
+          <td contenteditable="true" data-id="{{ r.id }}" data-field="leads_cold" data-model="report">{{ r.leads_cold }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+
+<!-- Добавить отчёт вручную (для быстрых тестов) -->
+<div class="card shadow-sm mb-5">
+  <div class="card-header bg-light"><strong>Добавить отчёт вручную</strong></div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-3">
+        <label class="form-label">Месяц</label>
+        <input type="date" name="month" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Платформа</label>
+        <input type="text" name="platform" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Поставщик</label>
+        <input type="text" name="vendor" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Расход</label>
+        <input type="number" step="0.01" name="spend" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Клики</label>
+        <input type="number" name="clicks" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Тёплые лиды</label>
+        <input type="number" name="leads_warm" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Холодные лиды</label>
+        <input type="number" name="leads_cold" class="form-control">
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Добавить отчёт</button>
+      </div>
+    </form>
+  </div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(document).ready(function () {
+    $("td[contenteditable='true']").on("blur keypress", function (e) {
+        if (e.type === "keypress" && e.which !== 13) return;
+
+        const cell = $(this);
+        const value = cell.text().trim();
+        const recordId = cell.data("id");
+        const field = cell.data("field");
+        const model = cell.data("model");
+
+        const csrftoken = (document.cookie.split('; ').find(r => r.startsWith('csrftoken='))||'').split('=')[1];
+        fetch("{% url 'update_field' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrftoken || "",
+            },
+            body: JSON.stringify({ id: recordId, field: field, value: value, model: model }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                cell.addClass("bg-success-subtle");
+                setTimeout(() => cell.removeClass("bg-success-subtle"), 700);
+            } else {
+                alert("Ошибка: " + data.error);
+            }
+        })
+        .catch(err => alert("Ошибка: " + err));
+    });
+});
+</script>
+{% endblock %}

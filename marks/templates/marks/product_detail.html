@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block content %}
+<h2 class="mb-3">{{ product.name }}</h2>
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  <a class="btn btn-sm btn-outline-primary" href="{% url 'plan_create' %}">+ План</a>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'funnel_create' %}">+ Воронка</a>
+  <a class="btn btn-sm btn-outline-success" href="{% url 'traffic_create' %}">+ Отчёт по трафику</a>
+  <a class="btn btn-sm btn-outline-dark" href="{% url 'patch_create' %}">+ Патчноут</a>
+  </div>
+
+<h5>Планы</h5>
+<ul>
+  {% for pl in plans %}
+    <li>{{ pl.month|date:"Y-m" }} — бюджет {{ pl.budget }}; выручка (план) {{ pl.revenue_target }}</li>
+  {% empty %}<li class="text-muted">Нет планов</li>{% endfor %}
+</ul>
+
+<h5>Воронки</h5>
+<ul>
+  {% for f in funnels %}
+    <li>воронка — {{ f.name }}{% if f.description %} — {{ f.description }}{% endif %}</li>
+  {% empty %}{% endfor %}
+  {% for b in bots %}
+    <li>бот — <a href="{% url 'branches_list' b.id %}">{{ b.name }}</a></li>
+  {% empty %}{% endfor %}
+  {% if not funnels and not bots %}
+    <li class="text-muted">Нет воронок</li>
+  {% endif %}
+</ul>
+
+<h5>Отчёты (последние)</h5>
+<ul>
+  {% for t in traffic %}
+    <li>{{ t.month|date:"Y-m" }} · {{ t.get_platform_display }} · {{ t.vendor }} — {{ t.spend }} ₽</li>
+  {% empty %}<li class="text-muted">Отчётов нет</li>{% endfor %}
+</ul>
+{% endblock %}

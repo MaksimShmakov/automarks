@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block title %}Метки{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Метки для ветки {{ branch.name }} ({{ branch.code }})</h2>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div></div>
+
+  <form method="post" action="{% url 'duplicate_all_tags' branch.id %}" class="d-flex align-items-center">
+    {% csrf_token %}
+    <input type="number" name="count" value="1" min="1" class="form-control form-control-sm me-2" style="width:80px;">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Дублировать все метки</button>
+  </form>
+</div>
+
+
+<div class="mb-3 d-flex gap-2">
+  <form method="post" action="{% url 'copy_tags' branch.id %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-warning">Копировать таблицу</button>
+  </form>
+
+  <form method="post" action="{% url 'paste_tags' branch.id %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-success" {% if not has_copied %}disabled title="Нет скопированных меток"{% endif %}>Вставить таблицу</button>
+  </form>
+  <div class="ms-auto"></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Номер</th>
+          <th>utm_source</th>
+          <th>utm_medium</th>
+          <th>utm_campaign</th>
+          <th>utm_term</th>
+          <th>utm_content</th>
+          <th>URL</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tag in tags %}
+        <tr>
+          <td><span class="fw-semibold">{{ tag.number }}</span></td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_source">{{ tag.utm_source|default:"-" }}</td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_medium">{{ tag.utm_medium|default:"-" }}</td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_campaign">{{ tag.utm_campaign|default:"-" }}</td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_term">{{ tag.utm_term|default:"-" }}</td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_content">{{ tag.utm_content|default:"-" }}</td>
+          <td><a href="{{ tag.url }}" target="_blank" class="link-primary">{{ tag.url }}</a></td>
+          <td>
+            <a href="{% url 'duplicate_tag' tag.id %}" class="btn btn-sm btn-outline-secondary">Дублировать</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">Создать метку</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <input type="hidden" name="create_tag" value="1">
+      <div class="col-md-6">
+        <label class="form-label">UTM source</label>
+        {{ form.utm_source|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">UTM medium</label>
+        {{ form.utm_medium|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">UTM campaign</label>
+        {{ form.utm_campaign|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">UTM term</label>
+        {{ form.utm_term|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">UTM content</label>
+        {{ form.utm_content|add_class:"form-control" }}
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Создать метку</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  const csrftoken = getCookie('csrftoken');
+
+  function activateInput(cell) {
+    if (cell.dataset.editing === '1') return;
+    const initial = cell.innerText.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control form-control-sm';
+    input.value = (initial === '-' ? '' : initial);
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    cell.dataset.editing = '1';
+    input.focus();
+
+    function commit(save) {
+      const value = input.value.trim();
+      cell.dataset.editing = '';
+      if (!save) { cell.textContent = initial || '-'; return; }
+      const payload = {
+        id: cell.dataset.id,
+        model: cell.dataset.model,
+        field: cell.dataset.field,
+        value: value
+      };
+      fetch('{% url "update_field" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken || '' },
+        body: JSON.stringify(payload)
+      }).then(r => r.json()).then(data => {
+        if (data && data.success) {
+          cell.textContent = value || '-';
+          cell.classList.add('bg-success-subtle');
+          setTimeout(() => cell.classList.remove('bg-success-subtle'), 600);
+        } else {
+          alert('Ошибка: ' + (data && data.error || 'неизвестно'));
+          cell.textContent = initial || '-';
+        }
+      }).catch(err => {
+        alert('Ошибка: ' + err);
+        cell.textContent = initial || '-';
+      });
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+      if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener('blur', () => commit(true));
+  }
+
+  document.querySelectorAll('td.editable').forEach(cell => {
+    cell.addEventListener('click', () => activateInput(cell));
+  });
+});
+</script>
+{% endblock %}

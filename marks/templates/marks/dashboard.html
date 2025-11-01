@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% block title %}Дашборд — Все продукты{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Обзор по всем продуктам</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'export_excel' %}?month={{ selected_month }}&year={{ selected_year }}" class="btn btn-success">Экспорт в Excel</a>
+    <a href="{% url 'export_pdf' %}?month={{ selected_month }}&year={{ selected_year }}" class="btn btn-danger">Экспорт в PDF</a>
+  </div>
+  </div>
+
+<!-- Быстрые действия -->
+{% load custom_filters %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body d-flex flex-wrap gap-2">
+    {% if user.is_authenticated %}
+      {% if user.is_superuser or user.profile.role in 'admin,manager' or user|has_any_group:'Администратор,Маркетолог' %}
+        <a class="btn btn-outline-primary" href="{% url 'products_list' %}">Продукты</a>
+        <a class="btn btn-primary" href="{% url 'products_list' %}">Создать продукт</a>
+        <a class="btn btn-outline-secondary" href="{% url 'plan_create' %}">Создать план</a>
+        <a class="btn btn-outline-secondary" href="{% url 'funnel_create' %}">Создать воронку</a>
+        <a class="btn btn-outline-secondary" href="{% url 'traffic_create' %}">Добавить отчёт</a>
+      {% endif %}
+      {% if user.is_superuser or user.profile.role == 'admin' or user|has_group:'Администратор' %}
+        <a class="btn btn-outline-dark" href="{% url 'bots_list' %}">Боты</a>
+        <a class="btn btn-dark" href="{% url 'bots_list' %}">Создать бота</a>
+      {% endif %}
+      <a class="btn btn-outline-info" href="{% url 'patch_create' %}">Создать патчноут</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Фильтр по периоду -->
+<form method="get" class="row g-2 mb-4 align-items-end">
+  <div class="col-md-3">
+    <label class="form-label">Месяц</label>
+    <select name="month" class="form-select">
+      {% for m_num, m_name in months %}
+        <option value="{{ m_num }}" {% if m_num == selected_month %}selected{% endif %}>{{ m_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Год</label>
+    <select name="year" class="form-select">
+      {% for y in years %}
+        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <button type="submit" class="btn btn-primary w-100">Применить фильтр</button>
+  </div>
+</form>
+
+<h4 class="mb-4">Период: {{ months|get_item:selected_month|default:"—" }} {{ selected_year }} г.</h4>
+
+<!-- Карточки продуктов -->
+<div class="row g-4">
+  {% for d in dashboard_data %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-body">
+        <h5 class="card-title mb-3">{{ d.product.name }}</h5>
+
+        <ul class="list-group list-group-flush mb-3">
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Расход:</span>
+            <div>
+              <strong>{{ d.spend }} ₽</strong>
+              {% if d.spend_delta %}
+                {% if d.spend_delta > 0 %}
+                  <span class="text-danger small ms-2">+{{ d.spend_delta }}%</span>
+                {% elif d.spend_delta < 0 %}
+                  <span class="text-success small ms-2">-{{ d.spend_delta|abs }}%</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </li>
+
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>Лиды:</span>
+            <div>
+              <strong>{{ d.leads }}</strong>
+              {% if d.leads_delta %}
+                {% if d.leads_delta > 0 %}
+                  <span class="text-success small ms-2">+{{ d.leads_delta }}%</span>
+                {% elif d.leads_delta < 0 %}
+                  <span class="text-danger small ms-2">-{{ d.leads_delta|abs }}%</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </li>
+        </ul>
+
+        <a href="{% url 'product_reports' d.product.id %}" class="btn btn-outline-primary w-100">Перейти к отчётам</a>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-center text-muted">Нет продуктов для отображения</p>
+  {% endfor %}
+</div>
+
+<hr class="my-5">
+
+<!-- Тренды -->
+<h4 class="mb-3">Динамика расходов и лидов</h4>
+<canvas id="trendChart" height="140"></canvas>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('trendChart').getContext('2d');
+const chartData = {
+  labels: [{% for d in dashboard_data %}"{{ d.product.name }}",{% endfor %}],
+  datasets: [
+    {
+      label: 'Расход (₽)',
+      data: [{% for d in dashboard_data %}{{ d.spend }},{% endfor %}],
+      borderColor: 'rgba(255, 99, 132, 0.8)',
+      backgroundColor: 'rgba(255, 99, 132, 0.2)',
+      fill: true,
+      tension: 0.4
+    },
+    {
+      label: 'Лиды (шт.)',
+      data: [{% for d in dashboard_data %}{{ d.leads }},{% endfor %}],
+      borderColor: 'rgba(54, 162, 235, 0.8)',
+      backgroundColor: 'rgba(54, 162, 235, 0.2)',
+      fill: true,
+      tension: 0.4
+    }
+  ]
+};
+new Chart(ctx, {
+  type: 'line',
+  data: chartData,
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'bottom' } },
+    scales: { y: { beginAtZero: true } }
+  }
+});
+</script>
+{% endblock %}
