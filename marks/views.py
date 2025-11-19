@@ -321,15 +321,45 @@ def bot_api(request, bot_name):
     except Bot.DoesNotExist:
         return JsonResponse({"error": "Bot not found"}, status=404)
 
+    filterable_fields = [
+        "number",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+    ]
+    tag_filters = {
+        field: request.GET.get(field)
+        for field in filterable_fields
+        if request.GET.get(field)
+    }
+
     data = {"bot": bot.name, "branches": []}
-    for branch in bot.branches.all():
+    branches_qs = bot.branches.all().prefetch_related("tags")
+    for branch in branches_qs:
+        tags_qs = branch.tags.all()
+        if tag_filters:
+            tags_qs = tags_qs.filter(**tag_filters)
+        tags_payload = list(
+            tags_qs.values(
+                "number",
+                "utm_source",
+                "utm_medium",
+                "utm_campaign",
+                "utm_term",
+                "utm_content",
+                "url",
+            )
+        )
+
+        if tag_filters and not tags_payload:
+            continue
+
         branch_data = {
             "name": branch.name,
             "code": branch.code,
-            "tags": list(branch.tags.values(
-                "number", "utm_source", "utm_medium", "utm_campaign",
-                "utm_term", "utm_content", "url"
-            ))
+            "tags": tags_payload,
         }
         data["branches"].append(branch_data)
     return JsonResponse(data, safe=False)
