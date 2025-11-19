@@ -336,6 +336,7 @@ def bot_api(request, bot_name):
     }
 
     data = {"bot": bot.name, "branches": []}
+    filtered_tags = []
     branches_qs = bot.branches.all().prefetch_related("tags")
     for branch in branches_qs:
         tags_qs = branch.tags.all()
@@ -353,7 +354,8 @@ def bot_api(request, bot_name):
             )
         )
 
-        if tag_filters and not tags_payload:
+        if tag_filters:
+            filtered_tags.extend(tags_payload)
             continue
 
         branch_data = {
@@ -362,6 +364,14 @@ def bot_api(request, bot_name):
             "tags": tags_payload,
         }
         data["branches"].append(branch_data)
+
+    if tag_filters:
+        if not filtered_tags:
+            return JsonResponse([], safe=False)
+        if len(filtered_tags) == 1:
+            return JsonResponse(filtered_tags[0])
+        return JsonResponse(filtered_tags, safe=False)
+
     return JsonResponse(data, safe=False)
 
 
