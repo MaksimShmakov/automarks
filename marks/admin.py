@@ -1,6 +1,14 @@
 from django.contrib import admin
 from .models import (
-    Product, PlanMonthly, BranchPlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile
+    Product,
+    Bot,
+    Branch,
+    PlanMonthly,
+    BranchPlanMonthly,
+    Funnel,
+    TrafficReport,
+    PatchNote,
+    UserProfile,
 )
 
 @admin.register(Product)
@@ -9,6 +17,24 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name",)
     def bots_count(self, obj): return obj.bots.count()
+
+
+@admin.register(Bot)
+class BotAdmin(admin.ModelAdmin):
+    list_display = ("name", "product", "created_at")
+    list_filter = ("product",)
+    search_fields = ("name", "product__name")
+
+
+@admin.register(Branch)
+class BranchAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "bot", "product")
+    list_filter = ("bot__product", "bot")
+    search_fields = ("name", "code", "bot__name", "bot__product__name")
+
+    def product(self, obj):
+        return obj.bot.product
+    product.short_description = "Product"
 
 @admin.register(PlanMonthly)
 class PlanMonthlyAdmin(admin.ModelAdmin):
