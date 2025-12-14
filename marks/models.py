@@ -174,6 +174,7 @@ class UserProfile(models.Model):
         ADMIN = "admin", "Максимальный"
         MANAGER = "manager", "Руководитель"
         MARKETER = "marketer", "Линейный (автометки)"
+        BOT_USER = "bot_user", "Оператор ботов"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.MARKETER)

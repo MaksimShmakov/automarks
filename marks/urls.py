@@ -9,7 +9,7 @@ from marks import views, views_products
 def root_redirect(request):
     """Главная страница — редирект в зависимости от авторизации."""
     if request.user.is_authenticated:
-        return redirect("/dashboard/")
+        return redirect(views.get_role_home_view_name(request.user))
     return redirect("/accounts/login/")
 
 
@@ -18,8 +18,8 @@ def root_redirect(request):
 def safe_login_view(request, *args, **kwargs):
     """Login без redirect_authenticated_user и без ошибок 500."""
     if request.user.is_authenticated:
-        return redirect("/dashboard/")
-    view = auth_views.LoginView.as_view(template_name="registration/login.html")
+        return redirect(views.get_role_home_view_name(request.user))
+    view = views.RoleAwareLoginView.as_view()
     return view(request, *args, **kwargs)
 
 

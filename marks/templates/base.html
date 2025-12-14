@@ -30,7 +30,7 @@
           {% if user.is_superuser or user.profile.role in 'admin,manager' or user|has_any_group:'Администратор,Маркетолог' %}
             <li class="nav-item"><a class="nav-link" href="{% url 'products_list' %}">Продукты</a></li>
           {% endif %}
-          {% if user.is_superuser or user.profile.role == 'admin' or user|has_group:'Администратор' %}
+          {% if user.is_superuser or user.profile.role in 'admin,bot_user' or user|has_any_group:'Администратор,Bot Operators' %}
             <li class="nav-item"><a class="nav-link" href="{% url 'bots_list' %}">Боты</a></li>
           {% endif %}
         {% endif %}

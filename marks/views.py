@@ -1,10 +1,13 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group
+from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import login
+from django.urls import reverse
 from datetime import datetime, timedelta
 from django.db import transaction
 from django.db.models import Sum
@@ -17,14 +20,34 @@ from openpyxl.styles import Font, Alignment
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote
+from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile
 from .forms import BotForm, BranchForm, TagForm, CustomUserCreationForm, TagImportForm
-from .permissions import require_roles
+from .permissions import require_roles, BOT_OPERATORS_GROUP
 
 
 # ---------- Roles helper ----------
 def get_user_role(user):
     return getattr(getattr(user, "profile", None), "role", None)
+
+
+def get_role_home_view_name(user):
+    role = get_user_role(user)
+    if role == UserProfile.Role.BOT_USER:
+        return "bots_list"
+    try:
+        if user.is_authenticated and user.groups.filter(name=BOT_OPERATORS_GROUP).exists():
+            return "bots_list"
+    except Exception:
+        pass
+    return "dashboard"
+
+
+class RoleAwareLoginView(LoginView):
+    template_name = "registration/login.html"
+
+    def get_success_url(self):
+        return reverse(get_role_home_view_name(self.request.user))
+
 
 # Override legacy group-based helpers to use profile roles
 def is_admin(user):
@@ -217,7 +240,7 @@ def dashboard(request):
 # ---------- Редактирование из таблицы ----------
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def update_field(request):
     try:
         data = json.loads(request.body.decode("utf-8"))
@@ -278,7 +301,7 @@ def update_field(request):
 # ---------- Дублирование меток ----------
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def duplicate_all_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     count = int(request.POST.get("count", 1))
@@ -307,6 +330,16 @@ def register(request):
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
+            profile = getattr(user, "profile", None)
+            if profile is None:
+                profile = UserProfile.objects.create(user=user)
+            if profile.role != UserProfile.Role.BOT_USER:
+                profile.role = UserProfile.Role.BOT_USER
+                profile.save(update_fields=["role"])
+
+            group, _ = Group.objects.get_or_create(name=BOT_OPERATORS_GROUP)
+            user.groups.add(group)
+
             login(request, user)
             return redirect("bots_list")
     else:
@@ -382,7 +415,7 @@ def bot_api(request, bot_name):
 
 # ---------- Боты ----------
 @login_required
-@require_roles('admin')
+@require_roles('admin', UserProfile.Role.BOT_USER)
 def bots_list(request):
     bots = Bot.objects.all()
     if request.method == "POST":
@@ -397,7 +430,7 @@ def bots_list(request):
 
 # ---------- Ветки ----------
 @login_required
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def branches_list(request, bot_id):
     bot = get_object_or_404(Bot, id=bot_id)
     branches = bot.branches.all()
@@ -415,7 +448,7 @@ def branches_list(request, bot_id):
 
 # ---------- Метки ----------
 @login_required
-@require_roles('admin', 'manager', 'marketer', 'analyst')
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def tags_list(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     tags = branch.tags.all()
@@ -452,7 +485,7 @@ def tags_list(request, branch_id):
 # ---------- Редактирование метки ----------
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def edit_tag(request, tag_id):
     tag = get_object_or_404(Tag, id=tag_id)
     form = TagForm(request.POST, instance=tag)
@@ -467,7 +500,7 @@ def edit_tag(request, tag_id):
 # ---------- Копирование / Вставка ----------
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def copy_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     request.session["copied_tags"] = list(branch.tags.values(
@@ -480,7 +513,7 @@ def copy_tags(request, branch_id):
 
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def paste_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     copied_tags = request.session.get("copied_tags")
@@ -497,7 +530,7 @@ def paste_tags(request, branch_id):
 
 @login_required
 @require_POST
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def import_tags_csv(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     form = TagImportForm(request.POST, request.FILES)
@@ -554,7 +587,7 @@ def import_tags_csv(request, branch_id):
 
 # ---------- Дублирование �?��'�?�� ----------
 @login_required
-@require_roles('admin', 'manager', 'marketer')
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def duplicate_tag(request, tag_id):
     tag = get_object_or_404(Tag, id=tag_id)
     branch = tag.branch

@@ -1,6 +1,10 @@
 from django.core.exceptions import PermissionDenied
 
 
+BOT_OPERATORS_GROUP = "Bot Operators"
+BOT_OPERATORS_ROLE = "bot_user"
+
+
 def require_roles(*allowed):
     """Role-based access with pragmatic fallbacks.
 
@@ -15,6 +19,7 @@ def require_roles(*allowed):
         "Аналитик": "analyst",
         # Optional aliases
         "Менеджер": "manager",
+        BOT_OPERATORS_GROUP: BOT_OPERATORS_ROLE,
     }
 
     def decorator(view):
@@ -30,8 +35,8 @@ def require_roles(*allowed):
             # Primary: profile role
             role = getattr(getattr(user, "profile", None), "role", None)
 
-            # Fallback: map via groups if role is missing
-            if not role and hasattr(user, "groups"):
+            # Fallback or override: map via groups when role is missing or insufficient
+            if (not role or role not in allowed) and hasattr(user, "groups"):
                 for grp_name, mapped in GROUP_TO_ROLE.items():
                     try:
                         if user.groups.filter(name=grp_name).exists():
