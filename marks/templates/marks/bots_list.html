@@ -5,21 +5,90 @@
 {% block content %}
 <h2 class="mb-4">Боты</h2>
 
-<div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
-  {% for bot in bots %}
-  <div class="col">
-    <div class="card shadow-sm h-100">
+<div class="mb-4">
+  <div class="card shadow-sm">
+    <div class="card-header bg-light d-flex align-items-center justify-content-between">
+      <div>
+        <h5 class="mb-0">Актуальные боты</h5>
+        <small class="text-muted">{{ active_bots|length }} шт.</small>
+      </div>
+      <button
+        class="btn btn-sm btn-outline-secondary"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#activeBotsCollapse"
+        aria-expanded="true"
+        aria-controls="activeBotsCollapse"
+      >
+        Скрыть/показать
+      </button>
+    </div>
+    <div class="collapse show" id="activeBotsCollapse">
       <div class="card-body">
-        <h5 class="card-title">
-          <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
-        </h5>
-        <p class="text-muted mb-0">Веток: {{ bot.branches.count }}</p>
+        {% if active_bots %}
+        <div class="row row-cols-1 row-cols-md-2 g-3">
+          {% for bot in active_bots %}
+          <div class="col">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h5 class="card-title">
+                  <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
+                </h5>
+                <p class="text-muted mb-0">Веток: {{ bot.branches_total }}</p>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Нет активных ботов.</p>
+        {% endif %}
       </div>
     </div>
   </div>
-  {% empty %}
-  <p class="text-muted">Боты отсутствуют</p>
-  {% endfor %}
+</div>
+
+<div class="mb-4">
+  <div class="card shadow-sm">
+    <div class="card-header bg-light d-flex align-items-center justify-content-between">
+      <div>
+        <h5 class="mb-0">Неактуальные боты</h5>
+        <small class="text-muted">{{ inactive_bots|length }} шт.</small>
+      </div>
+      <button
+        class="btn btn-sm btn-outline-secondary"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#inactiveBotsCollapse"
+        aria-expanded="false"
+        aria-controls="inactiveBotsCollapse"
+      >
+        Скрыть/показать
+      </button>
+    </div>
+    <div class="collapse" id="inactiveBotsCollapse">
+      <div class="card-body">
+        {% if inactive_bots %}
+        <div class="row row-cols-1 row-cols-md-2 g-3">
+          {% for bot in inactive_bots %}
+          <div class="col">
+            <div class="card shadow-sm h-100 border-0 border-start border-4 border-warning">
+              <div class="card-body">
+                <h5 class="card-title">
+                  <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
+                </h5>
+                <p class="text-muted mb-0">Веток: {{ bot.branches_total }}</p>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Нет неактуальных ботов.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="card shadow-sm">
@@ -32,7 +101,10 @@
       <div class="col-md-6">
         <label class="form-label">Название бота</label>
         {{ form.name|add_class:"form-control" }}
-        <small class="form-text text-muted">Имя бота должно чётко совпадать с названием в Telegram (без @).</small>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Продукт (опционально)</label>
+        {{ form.product|add_class:"form-select" }}
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Создать</button>

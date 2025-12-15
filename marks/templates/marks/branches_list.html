@@ -3,8 +3,27 @@
 {% block title %}Ветки{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Ветки бота {{ bot.name }}</h2>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div class="d-flex align-items-center gap-3">
+    <h2 class="mb-0">Ветки бота {{ bot.name }}</h2>
+    {% if not bot.is_active %}
+    <span class="badge bg-warning text-dark">Неактуальный</span>
+    {% endif %}
+  </div>
+  <form method="post" class="d-flex align-items-center gap-3">
+    {% csrf_token %}
+    <input type="hidden" name="form_type" value="bot_status" />
+    {% with field=bot_status_form.inactive %}
+    <div class="form-check mb-0">
+      {{ field|add_class:"form-check-input" }}
+      <label class="form-check-label" for="{{ field.id_for_label }}">Неактуальный бот</label>
+    </div>
+    {% endwith %}
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Сохранить</button>
+  </form>
+</div>
 
+{% if branches %}
 <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
   {% for branch in branches %}
   <div class="col">
@@ -17,10 +36,11 @@
       </div>
     </div>
   </div>
-  {% empty %}
-  <p class="text-muted">Ветки отсутствуют</p>
   {% endfor %}
 </div>
+{% else %}
+<p class="text-muted mb-4">У бота пока нет веток.</p>
+{% endif %}
 
 <div class="card shadow-sm">
   <div class="card-header bg-light">
@@ -44,4 +64,3 @@
   </div>
 </div>
 {% endblock %}
-

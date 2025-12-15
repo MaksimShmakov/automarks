@@ -65,6 +65,25 @@ class BotForm(forms.ModelForm):
         model = Bot
         fields = ["name", "product"]
 
+
+class BotStatusForm(forms.Form):
+    inactive = forms.BooleanField(required=False, label="Неактуальный бот")
+
+    def __init__(self, *args, bot=None, **kwargs):
+        self.bot = bot
+        if self.bot is None:
+            raise ValueError("Bot instance is required for BotStatusForm")
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.fields["inactive"].initial = not self.bot.is_active
+
+    def save(self):
+        if not self.is_valid():
+            raise ValueError("Cannot save inactive state for invalid form")
+        self.bot.is_active = not self.cleaned_data["inactive"]
+        self.bot.save(update_fields=["is_active"])
+        return self.bot
+
 class BranchForm(forms.ModelForm):
     class Meta:
         model = Branch
@@ -88,4 +107,3 @@ class TagImportForm(forms.Form):
         if not uploaded.name.lower().endswith(".csv"):
             raise forms.ValidationError("?�?�?�?�? �� ����? CSV.")
         return uploaded
-

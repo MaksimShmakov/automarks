@@ -10,7 +10,7 @@ from django.contrib.auth import login
 from django.urls import reverse
 from datetime import datetime, timedelta
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Count
 from decimal import Decimal
 import json
 import csv
@@ -21,7 +21,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile
-from .forms import BotForm, BranchForm, TagForm, CustomUserCreationForm, TagImportForm
+from .forms import BotForm, BotStatusForm, BranchForm, TagForm, CustomUserCreationForm, TagImportForm
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 
 
@@ -417,7 +417,9 @@ def bot_api(request, bot_name):
 @login_required
 @require_roles('admin', UserProfile.Role.BOT_USER)
 def bots_list(request):
-    bots = Bot.objects.all()
+    bots = Bot.objects.all().annotate(branches_total=Count("branches"))
+    active_bots = bots.filter(is_active=True).order_by("name")
+    inactive_bots = bots.filter(is_active=False).order_by("name")
     if request.method == "POST":
         form = BotForm(request.POST)
         if form.is_valid():
@@ -425,7 +427,15 @@ def bots_list(request):
             return redirect("bots_list")
     else:
         form = BotForm()
-    return render(request, "marks/bots_list.html", {"bots": bots, "form": form})
+    return render(
+        request,
+        "marks/bots_list.html",
+        {
+            "active_bots": active_bots,
+            "inactive_bots": inactive_bots,
+            "form": form,
+        },
+    )
 
 
 # ---------- Ветки ----------
@@ -434,16 +444,32 @@ def bots_list(request):
 def branches_list(request, bot_id):
     bot = get_object_or_404(Bot, id=bot_id)
     branches = bot.branches.all()
+    bot_status_form = BotStatusForm(bot=bot)
+    form = BranchForm()
     if request.method == "POST":
-        form = BranchForm(request.POST)
-        if form.is_valid():
-            branch = form.save(commit=False)
-            branch.bot = bot
-            branch.save()
-            return redirect("branches_list", bot_id=bot.id)
-    else:
-        form = BranchForm()
-    return render(request, "marks/branches_list.html", {"bot": bot, "branches": branches, "form": form})
+        if request.POST.get("form_type") == "bot_status":
+            bot_status_form = BotStatusForm(request.POST, bot=bot)
+            if bot_status_form.is_valid():
+                bot_status_form.save()
+                messages.success(request, "Статус бота обновлён")
+                return redirect("branches_list", bot_id=bot.id)
+        else:
+            form = BranchForm(request.POST)
+            if form.is_valid():
+                branch = form.save(commit=False)
+                branch.bot = bot
+                branch.save()
+                return redirect("branches_list", bot_id=bot.id)
+    return render(
+        request,
+        "marks/branches_list.html",
+        {
+            "bot": bot,
+            "branches": branches,
+            "form": form,
+            "bot_status_form": bot_status_form,
+        },
+    )
 
 
 # ---------- Метки ----------
