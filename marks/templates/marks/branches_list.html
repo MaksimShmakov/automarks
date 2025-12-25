@@ -26,8 +26,8 @@
 
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">
-    <h5 class="mb-0">Patch notes</h5>
-    <a class="btn btn-sm btn-outline-primary" href="{% url 'patch_create' %}?bot_id={{ bot.id }}&next={{ request.path }}">+ Patch note</a>
+    <h5 class="mb-0">Патчноуты</h5>
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'patch_create' %}?bot_id={{ bot.id }}&next={{ request.path }}">+ Патчноут</a>
   </div>
   <div class="card-body">
     {% if patchnotes %}
@@ -46,7 +46,7 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="text-muted mb-0">No patch notes yet.</p>
+    <p class="text-muted mb-0">Патчноутов не найдено.</p>
     {% endif %}
   </div>
 </div>

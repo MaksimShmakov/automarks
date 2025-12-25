@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-# ожидание БД
 if [ -n "$POSTGRES_HOST" ]; then
   echo "Waiting for Postgres at $POSTGRES_HOST:$POSTGRES_PORT..."
   until python - <<'PYCODE'
@@ -30,7 +29,6 @@ fi
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 
-# Gunicorn
 exec gunicorn config.wsgi:application \
   --bind 0.0.0.0:8000 \
   --workers 3 \

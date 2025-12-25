@@ -9,7 +9,7 @@
   <div class="card shadow-sm">
     <div class="card-header bg-light d-flex align-items-center justify-content-between">
       <div>
-        <h5 class="mb-0">Актуальные боты</h5>
+        <h5 class="mb-0">Активные боты</h5>
         <small class="text-muted">{{ active_bots|length }} шт.</small>
       </div>
       <button
@@ -52,7 +52,7 @@
   <div class="card shadow-sm">
     <div class="card-header bg-light d-flex align-items-center justify-content-between">
       <div>
-        <h5 class="mb-0">Неактуальные боты</h5>
+        <h5 class="mb-0">Неактивные боты</h5>
         <small class="text-muted">{{ inactive_bots|length }} шт.</small>
       </div>
       <button
@@ -84,7 +84,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <p class="text-muted mb-0">Нет неактуальных ботов.</p>
+        <p class="text-muted mb-0">Нет неактивных ботов.</p>
         {% endif %}
       </div>
     </div>
@@ -101,10 +101,6 @@
       <div class="col-md-6">
         <label class="form-label">Название бота</label>
         {{ form.name|add_class:"form-control" }}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Продукт (опционально)</label>
-        {{ form.product|add_class:"form-select" }}
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Создать</button>
