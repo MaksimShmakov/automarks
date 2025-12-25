@@ -1,50 +1,54 @@
-                                                
-
-from django.db import migrations, models
-import django.db.models.deletion
-
-
-class Migration(migrations.Migration):
-
-    initial = True
-
-    dependencies = [
-    ]
-
-    operations = [
-        migrations.CreateModel(
-            name='Bot',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=255, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-            ],
-        ),
-        migrations.CreateModel(
-            name='Branch',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('bot', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='branches', to='marks.bot')),
-            ],
-            options={
-                'unique_together': {('bot', 'name')},
-            },
-        ),
-        migrations.CreateModel(
-            name='Tag',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('number', models.CharField(max_length=20, unique=True)),
-                ('utm_source', models.CharField(blank=True, max_length=255, null=True)),
-                ('utm_medium', models.CharField(blank=True, max_length=255, null=True)),
-                ('utm_campaign', models.CharField(blank=True, max_length=255, null=True)),
-                ('utm_term', models.CharField(blank=True, max_length=255, null=True)),
-                ('utm_content', models.CharField(blank=True, max_length=255, null=True)),
-                ('url', models.CharField(blank=True, max_length=500, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('branch', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tags', to='marks.branch')),
-            ],
-        ),
-    ]
+
+
+
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+
+    initial = True
+
+
+    dependencies = [
+    ]
+
+
+    operations = [
+        migrations.CreateModel(
+            name='Bot',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=255, unique=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Branch',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=50)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('bot', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='branches', to='marks.bot')),
+            ],
+            options={
+                'unique_together': {('bot', 'name')},
+            },
+        ),
+        migrations.CreateModel(
+            name='Tag',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('number', models.CharField(max_length=20, unique=True)),
+                ('utm_source', models.CharField(blank=True, max_length=255, null=True)),
+                ('utm_medium', models.CharField(blank=True, max_length=255, null=True)),
+                ('utm_campaign', models.CharField(blank=True, max_length=255, null=True)),
+                ('utm_term', models.CharField(blank=True, max_length=255, null=True)),
+                ('utm_content', models.CharField(blank=True, max_length=255, null=True)),
+                ('url', models.CharField(blank=True, max_length=500, null=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('branch', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tags', to='marks.branch')),
+            ],
+        ),
+    ]
