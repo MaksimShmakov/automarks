@@ -109,7 +109,6 @@ def export_pdf(request):
     return response
 
 
-# ---------- Экспорт Excel ----------
 @login_required
 @require_roles('admin', 'manager', 'marketer', 'analyst')
 def export_excel(request):
@@ -180,7 +179,6 @@ def _get_dashboard_data(month, year):
     return data
 
 
-# ---------- Dashboard ----------
 @login_required
 @require_roles('admin', 'manager', 'marketer', 'analyst')
 def dashboard(request):
@@ -237,7 +235,6 @@ def dashboard(request):
     })
 
 
-# ---------- Редактирование из таблицы ----------
 @login_required
 @require_POST
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
@@ -298,7 +295,6 @@ def update_field(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ---------- Дублирование меток ----------
 @login_required
 @require_POST
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
@@ -324,7 +320,6 @@ def duplicate_all_tags(request, branch_id):
     return redirect("tags_list", branch_id=branch.id)
 
 
-# ---------- Регистрация ----------
 def register(request):
     if request.method == "POST":
         form = CustomUserCreationForm(request.POST)
@@ -347,7 +342,6 @@ def register(request):
     return render(request, "registration/register.html", {"form": form})
 
 
-# ---------- API ----------
 def bot_api(request, bot_name):
     try:
         bot = Bot.objects.get(name=bot_name)
@@ -413,7 +407,6 @@ def bot_api(request, bot_name):
     return JsonResponse(data, safe=False)
 
 
-# ---------- Боты ----------
 @login_required
 @require_roles('admin', UserProfile.Role.BOT_USER)
 def bots_list(request):
@@ -438,12 +431,12 @@ def bots_list(request):
     )
 
 
-# ---------- Ветки ----------
 @login_required
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def branches_list(request, bot_id):
     bot = get_object_or_404(Bot, id=bot_id)
     branches = bot.branches.all()
+    patchnotes = PatchNote.objects.filter(branch__bot=bot).select_related("branch")
     bot_status_form = BotStatusForm(bot=bot)
     form = BranchForm()
     if request.method == "POST":
@@ -466,6 +459,7 @@ def branches_list(request, bot_id):
         {
             "bot": bot,
             "branches": branches,
+            "patchnotes": patchnotes,
             "form": form,
             "bot_status_form": bot_status_form,
         },
@@ -478,6 +472,7 @@ def branches_list(request, bot_id):
 def tags_list(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     tags = branch.tags.all()
+    patchnotes = branch.patch_notes.all()
     has_copied = bool(request.session.get("copied_tags"))
 
     if request.method == "POST" and "create_tag" in request.POST:
@@ -500,6 +495,7 @@ def tags_list(request, branch_id):
         {
             "branch": branch,
             "tags": tags,
+            "patchnotes": patchnotes,
             "form": form,
             "has_copied": has_copied,
             "import_form": import_form,

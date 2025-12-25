@@ -44,10 +44,26 @@ class TrafficReportForm(forms.ModelForm):
         model = TrafficReport
         fields = ["product", "month", "platform", "vendor", "spend", "impressions", "clicks", "leads_warm", "leads_cold", "notes"]
 
-class PatchNoteForm(forms.ModelForm):
-    class Meta:
-        model = PatchNote
-        fields = ["branch", "title", "change_type", "change_description"]
+class PatchNoteForm(forms.Form):
+    text = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 4}),
+        label="Text",
+    )
+    created_at = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        label="Date",
+    )
+    branches = forms.ModelMultipleChoiceField(
+        queryset=Branch.objects.none(),
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
+        label="Branches",
+    )
+
+    def __init__(self, *args, branches=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if branches is None:
+            branches = Branch.objects.all()
+        self.fields["branches"].queryset = branches
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -87,7 +103,7 @@ class BotStatusForm(forms.Form):
 class BranchForm(forms.ModelForm):
     class Meta:
         model = Branch
-        fields = ["name", "code"]   # название и код ветки
+        fields = ["name", "code"]
 
 class TagForm(forms.ModelForm):
     class Meta:

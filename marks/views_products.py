@@ -1,7 +1,8 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from .models import Product, PlanMonthly, Funnel, TrafficReport, PatchNote
+from django.utils import timezone
+from .models import Product, PlanMonthly, Funnel, TrafficReport, PatchNote, Bot, Branch
 from .forms import ProductForm, PlanMonthlyForm, FunnelForm, FunnelMasterForm, TrafficReportForm, PatchNoteForm
 from .permissions import require_roles
 from .models import UserProfile
@@ -76,18 +77,64 @@ def traffic_report_create(request):
 
 @login_required
 def patchnote_create(request):
-    if request.method == "POST":
-        form = PatchNoteForm(request.POST)
-        if form.is_valid():
-            pn = form.save(commit=False)
-            pn.created_by = request.user
-            pn.save()
-            messages.success(request, "Патч-ноут добавлен")
-            return redirect("tags_list", branch_id=pn.branch.id)
-    else:
-        form = PatchNoteForm()
-    return render(request, "marks/patch_form.html", {"form": form})
+    bot_id = request.GET.get("bot_id") or request.POST.get("bot_id")
+    branch_id = request.GET.get("branch_id") or request.POST.get("branch_id")
+    next_url = request.GET.get("next") or request.POST.get("next")
 
+    branches_qs = Branch.objects.all()
+    initial = {"created_at": timezone.localdate()}
+
+    if bot_id:
+        bot = get_object_or_404(Bot, id=bot_id)
+        branches_qs = bot.branches.all()
+
+    if branch_id:
+        branch = get_object_or_404(Branch, id=branch_id)
+        branches_qs = branches_qs.filter(id=branch.id)
+        initial["branches"] = [branch]
+
+    if request.method == "POST":
+        form = PatchNoteForm(request.POST, branches=branches_qs)
+        if form.is_valid():
+            text = form.cleaned_data["text"].strip()
+            created_date = form.cleaned_data["created_at"]
+            created_at = timezone.now().replace(
+                year=created_date.year,
+                month=created_date.month,
+                day=created_date.day,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            title = text.splitlines()[0][:80] if text else "Patch note"
+            created = 0
+            for branch in form.cleaned_data["branches"]:
+                pn = PatchNote.objects.create(
+                    branch=branch,
+                    created_by=request.user,
+                    title=title,
+                    change_description=text,
+                )
+                if pn.created_at != created_at:
+                    pn.created_at = created_at
+                    pn.save(update_fields=["created_at"])
+                created += 1
+            messages.success(request, f"Patch notes created: {created}.")
+            if next_url:
+                return redirect(next_url)
+            if branch_id:
+                return redirect("tags_list", branch_id=branch_id)
+            if bot_id:
+                return redirect("branches_list", bot_id=bot_id)
+            return redirect("bots_list")
+    else:
+        form = PatchNoteForm(branches=branches_qs, initial=initial)
+    return render(
+        request,
+        "marks/patch_form.html",
+        {"form": form, "bot_id": bot_id, "branch_id": branch_id, "next": next_url},
+    )
 
 @login_required
 @require_roles(UserProfile.Role.ADMIN, UserProfile.Role.MANAGER)

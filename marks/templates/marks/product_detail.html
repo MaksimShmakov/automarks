@@ -7,7 +7,7 @@
   <a class="btn btn-sm btn-outline-primary" href="{% url 'plan_create' %}">+ План</a>
   <a class="btn btn-sm btn-outline-secondary" href="{% url 'funnel_create' %}">+ Воронка</a>
   <a class="btn btn-sm btn-outline-success" href="{% url 'traffic_create' %}">+ Отчёт по трафику</a>
-  <a class="btn btn-sm btn-outline-dark" href="{% url 'patch_create' %}">+ Патчноут</a>
+  <a class="btn btn-sm btn-outline-dark" href="{% url 'patch_create' %}?next={{ request.path }}">+ Патчноут</a>
   </div>
 
 <h5>Планы</h5>

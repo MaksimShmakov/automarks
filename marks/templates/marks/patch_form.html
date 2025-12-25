@@ -8,24 +8,32 @@
   <div class="card-body">
     <form method="post" class="row g-3">
       {% csrf_token %}
-      <div class="col-md-6">
-        <label class="form-label">Ветка</label>
-        {{ form.branch|add_class:"form-select" }}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Заголовок</label>
-        {{ form.title|add_class:"form-control" }}
-      </div>
+      {% if bot_id %}<input type="hidden" name="bot_id" value="{{ bot_id }}">{% endif %}
+      {% if branch_id %}<input type="hidden" name="branch_id" value="{{ branch_id }}">{% endif %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       <div class="col-md-4">
-        <label class="form-label">Тип изменения</label>
-        {{ form.change_type|add_class:"form-control" }}
+        <label class="form-label">Date</label>
+        {{ form.created_at|add_class:"form-control" }}
       </div>
       <div class="col-12">
-        <label class="form-label">Описание изменений</label>
-        {{ form.change_description|add_class:"form-control" }}
+        <label class="form-label">Text</label>
+        {{ form.text|add_class:"form-control" }}
       </div>
       <div class="col-12">
-        <button class="btn btn-primary">Создать</button>
+        <label class="form-label">Branches</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for checkbox in form.branches %}
+          <div class="form-check">
+            {{ checkbox.tag }}
+            <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+              {{ checkbox.choice_label }}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary">Create</button>
       </div>
     </form>
   </div>
