@@ -18,6 +18,8 @@ class Product(models.Model):
 class Bot(models.Model):
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="bots")
     name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True, default="")
+    salebot_url = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 

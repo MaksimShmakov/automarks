@@ -23,6 +23,33 @@
   </form>
 </div>
 
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">Описание бота</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="bot_details" />
+      <div class="col-12">
+        <label class="form-label">Описание бота</label>
+        {{ bot_details_form.description|add_class:"form-control" }}
+        <div class="form-text">Заметка для сотрудников. Можно менять в любое время.</div>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Ссылка на Salebot</label>
+        {{ bot_details_form.salebot_url|add_class:"form-control" }}
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-outline-primary btn-sm">Сохранить</button>
+        {% if bot.salebot_url %}
+        <a class="btn btn-link px-0" href="{{ bot.salebot_url }}" target="_blank" rel="noopener">Открыть Salebot</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
 
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">

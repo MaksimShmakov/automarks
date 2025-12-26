@@ -98,6 +98,16 @@ class BotForm(forms.ModelForm):
         fields = ["name"]
 
 
+class BotDetailsForm(forms.ModelForm):
+    class Meta:
+        model = Bot
+        fields = ["description", "salebot_url"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 3}),
+            "salebot_url": forms.TextInput(attrs={"placeholder": "https://..."}),
+        }
+
+
 class BotStatusForm(forms.Form):
     inactive = forms.BooleanField(required=False, label="Бот неактивен")
 

@@ -22,7 +22,15 @@ from reportlab.pdfgen import canvas
 
 
 from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile
-from .forms import BotForm, BotStatusForm, BranchForm, TagForm, CustomUserCreationForm, TagImportForm
+from .forms import (
+    BotForm,
+    BotStatusForm,
+    BotDetailsForm,
+    BranchForm,
+    TagForm,
+    CustomUserCreationForm,
+    TagImportForm,
+)
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 
 TAG_UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
@@ -466,6 +474,7 @@ def branches_list(request, bot_id):
     branches = bot.branches.all()
     patchnotes = PatchNote.objects.filter(branch__bot=bot).select_related("branch")
     bot_status_form = BotStatusForm(bot=bot)
+    bot_details_form = BotDetailsForm(instance=bot)
     form = BranchForm()
     if request.method == "POST":
         if request.POST.get("form_type") == "bot_status":
@@ -473,6 +482,12 @@ def branches_list(request, bot_id):
             if bot_status_form.is_valid():
                 bot_status_form.save()
                 messages.success(request, "Статус бота обновлён")
+                return redirect("branches_list", bot_id=bot.id)
+        elif request.POST.get("form_type") == "bot_details":
+            bot_details_form = BotDetailsForm(request.POST, instance=bot)
+            if bot_details_form.is_valid():
+                bot_details_form.save()
+                messages.success(request, "Информация о боте обновлена.")
                 return redirect("branches_list", bot_id=bot.id)
         else:
             form = BranchForm(request.POST)
@@ -490,6 +505,7 @@ def branches_list(request, bot_id):
             "patchnotes": patchnotes,
             "form": form,
             "bot_status_form": bot_status_form,
+            "bot_details_form": bot_details_form,
         },
     )
 
