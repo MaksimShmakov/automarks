@@ -621,6 +621,18 @@ def duplicate_tag(request, tag_id):
 
 
 @login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
+def delete_tag(request, tag_id):
+    tag = get_object_or_404(Tag, id=tag_id)
+    branch_id = tag.branch_id
+    tag_number = tag.number
+    tag.delete()
+    messages.success(request, f"Метка {tag_number} удалена.")
+    return redirect("tags_list", branch_id=branch_id)
+
+
+@login_required
 @require_roles('admin', 'manager', 'marketer', 'analyst')
 def product_reports(request, product_id):
     product = get_object_or_404(Product, id=product_id)

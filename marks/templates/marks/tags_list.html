@@ -78,6 +78,10 @@
           <td><a href="{{ tag.url }}" target="_blank" class="link-primary">{{ tag.url }}</a></td>
           <td>
             <a href="{% url 'duplicate_tag' tag.id %}" class="btn btn-sm btn-outline-secondary">Дублировать</a>
+            <form method="post" action="{% url 'delete_tag' tag.id %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+            </form>
           </td>
         </tr>
         {% endfor %}

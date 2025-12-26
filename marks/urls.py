@@ -34,6 +34,7 @@ urlpatterns = [
     path("branch/<int:branch_id>/", views.tags_list, name="tags_list"),
     path("tag/<int:tag_id>/edit/", views.edit_tag, name="edit_tag"),
     path("tag/<int:tag_id>/duplicate/", views.duplicate_tag, name="duplicate_tag"),
+    path("tag/<int:tag_id>/delete/", views.delete_tag, name="delete_tag"),
     path("branch/<int:branch_id>/copy/", views.copy_tags, name="copy_tags"),
     path("branch/<int:branch_id>/paste/", views.paste_tags, name="paste_tags"),
     path("branch/<int:branch_id>/import/", views.import_tags_csv, name="import_tags_csv"),
