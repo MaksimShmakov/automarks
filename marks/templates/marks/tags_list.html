@@ -48,7 +48,10 @@
     {% csrf_token %}
     <button type="submit" class="btn btn-sm btn-success" {% if not has_copied %}disabled title="Нет скопированных меток"{% endif %}>Вставить таблицу</button>
   </form>
-  <div class="ms-auto"></div>
+  <form method="post" action="{% url 'undo_tags_action' branch.id %}" class="ms-auto">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Отменить изменения</button>
+  </form>
 </div>
 
 <div class="card shadow-sm mb-4">

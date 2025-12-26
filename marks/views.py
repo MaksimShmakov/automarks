@@ -25,6 +25,11 @@ from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficRepor
 from .forms import BotForm, BotStatusForm, BranchForm, TagForm, CustomUserCreationForm, TagImportForm
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 
+TAG_UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
+TAG_CLEAR_FIELDS = {field: None for field in TAG_UTM_FIELDS}
+TAG_CLEAR_FIELDS["url"] = None
+TAG_UNDO_SESSION_KEY = "last_tag_action"
+
 
 def get_user_role(user):
     return getattr(getattr(user, "profile", None), "role", None)
@@ -40,6 +45,20 @@ def get_role_home_view_name(user):
     except Exception:
         pass
     return "dashboard"
+
+def _active_tags_qs(tags_qs):
+    return tags_qs.filter(url__isnull=False)
+
+def _tag_snapshot(tag):
+    return {field: getattr(tag, field) for field in TAG_UTM_FIELDS + ["url"]}
+
+def _set_last_tag_action(request, action, branch_id, payload):
+    request.session[TAG_UNDO_SESSION_KEY] = {
+        "action": action,
+        "branch_id": branch_id,
+        "payload": payload,
+    }
+    request.session.modified = True
 
 
 class RoleAwareLoginView(LoginView):
@@ -243,6 +262,7 @@ def update_field(request):
 
     try:
         obj = model.objects.get(id=record_id)
+        previous_tag_snapshot = _tag_snapshot(obj) if model_type == "tag" else None
         model_field = obj._meta.get_field(field)
         itype = model_field.get_internal_type()
 
@@ -270,6 +290,13 @@ def update_field(request):
 
         setattr(obj, field, coerced)
         obj.save(update_fields=[field])
+        if model_type == "tag" and previous_tag_snapshot is not None:
+            _set_last_tag_action(
+                request,
+                "edit",
+                obj.branch_id,
+                {"tag_id": obj.id, "fields": previous_tag_snapshot},
+            )
         return JsonResponse({"success": True})
     except model.DoesNotExist:
         return JsonResponse({"error": "Объект не найден"}, status=404)
@@ -283,13 +310,14 @@ def update_field(request):
 def duplicate_all_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
     count = int(request.POST.get("count", 1))
-    tags = list(branch.tags.all())
+    tags = list(_active_tags_qs(branch.tags))
     total_created = 0
+    created_ids = []
 
 
     for _ in range(count):
         for tag in tags:
-            Tag.objects.create(
+            new_tag = Tag.objects.create(
                 branch=branch,
                 utm_source=tag.utm_source,
                 utm_medium=tag.utm_medium,
@@ -298,6 +326,14 @@ def duplicate_all_tags(request, branch_id):
                 utm_content=tag.utm_content,
             )
             total_created += 1
+            created_ids.append(new_tag.id)
+    if created_ids:
+        _set_last_tag_action(
+            request,
+            "duplicate_all",
+            branch.id,
+            {"tag_ids": created_ids},
+        )
 
 
     messages.success(request, f"Скопировано {total_created} меток ({len(tags)} x {count}).")
@@ -355,7 +391,7 @@ def bot_api(request, bot_name):
     filtered_tags = []
     branches_qs = bot.branches.all().prefetch_related("tags")
     for branch in branches_qs:
-        tags_qs = branch.tags.all()
+        tags_qs = _active_tags_qs(branch.tags)
         if tag_filters:
             tags_qs = tags_qs.filter(**tag_filters)
         tags_payload = list(
@@ -403,8 +439,8 @@ def bot_api(request, bot_name):
 @require_roles('admin', UserProfile.Role.BOT_USER)
 def bots_list(request):
     bots = Bot.objects.all().annotate(branches_total=Count("branches"))
-    active_bots = bots.filter(is_active=True).order_by("name")
-    inactive_bots = bots.filter(is_active=False).order_by("name")
+    active_bots = bots.filter(is_active=True).order_by("name", "created_at")
+    inactive_bots = bots.filter(is_active=False).order_by("name", "created_at")
     if request.method == "POST":
         form = BotForm(request.POST)
         if form.is_valid():
@@ -462,7 +498,7 @@ def branches_list(request, bot_id):
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def tags_list(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
-    tags = branch.tags.all()
+    tags = _active_tags_qs(branch.tags)
     patchnotes = branch.patch_notes.all()
     has_copied = bool(request.session.get("copied_tags"))
 
@@ -474,6 +510,12 @@ def tags_list(request, branch_id):
                 tag = form.save(commit=False)
                 tag.branch = branch
                 tag.save()
+                _set_last_tag_action(
+                    request,
+                    "create",
+                    branch.id,
+                    {"tag_ids": [tag.id]},
+                )
                 messages.success(request, "Метка создана")
                 return redirect("tags_list", branch_id=branch.id)
     else:
@@ -502,10 +544,17 @@ def tags_list(request, branch_id):
 @require_POST
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def edit_tag(request, tag_id):
-    tag = get_object_or_404(Tag, id=tag_id)
+    tag = get_object_or_404(Tag, id=tag_id, url__isnull=False)
+    previous_tag_snapshot = _tag_snapshot(tag)
     form = TagForm(request.POST, instance=tag)
     if form.is_valid():
         form.save()
+        _set_last_tag_action(
+            request,
+            "edit",
+            tag.branch_id,
+            {"tag_id": tag.id, "fields": previous_tag_snapshot},
+        )
         messages.success(request, f"Метка {tag.number} обновлена")
     else:
         messages.error(request, "Ошибка при обновлении метки")
@@ -517,7 +566,7 @@ def edit_tag(request, tag_id):
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def copy_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
-    request.session["copied_tags"] = list(branch.tags.values(
+    request.session["copied_tags"] = list(_active_tags_qs(branch.tags).values(
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"
     ))
     request.session.modified = True
@@ -534,8 +583,17 @@ def paste_tags(request, branch_id):
     if not copied_tags:
         messages.error(request, "Нет скопированных меток.")
         return redirect("tags_list", branch_id=branch.id)
+    created_ids = []
     for tag_data in copied_tags:
-        Tag.objects.create(branch=branch, **tag_data)
+        new_tag = Tag.objects.create(branch=branch, **tag_data)
+        created_ids.append(new_tag.id)
+    if created_ids:
+        _set_last_tag_action(
+            request,
+            "paste",
+            branch.id,
+            {"tag_ids": created_ids},
+        )
     messages.success(request, "Таблица меток вставлена!")
     return redirect("tags_list", branch_id=branch.id)
 
@@ -577,6 +635,7 @@ def import_tags_csv(request, branch_id):
 
 
     created = 0
+    created_ids = []
     try:
         with transaction.atomic():
             for row in reader:
@@ -586,8 +645,9 @@ def import_tags_csv(request, branch_id):
                     col: (row.get(col) or "").strip() or None
                     for col in expected
                 }
-                Tag.objects.create(branch=branch, **tag_kwargs)
+                new_tag = Tag.objects.create(branch=branch, **tag_kwargs)
                 created += 1
+                created_ids.append(new_tag.id)
     except csv.Error as exc:
         messages.error(request, f"Ошибка CSV: {exc}")
         return redirect("tags_list", branch_id=branch.id)
@@ -596,6 +656,13 @@ def import_tags_csv(request, branch_id):
         return redirect("tags_list", branch_id=branch.id)
 
 
+    if created_ids:
+        _set_last_tag_action(
+            request,
+            "import",
+            branch.id,
+            {"tag_ids": created_ids},
+        )
     if created:
         messages.success(request, f"Метки добавлены: {created}.")
     else:
@@ -606,7 +673,7 @@ def import_tags_csv(request, branch_id):
 @login_required
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def duplicate_tag(request, tag_id):
-    tag = get_object_or_404(Tag, id=tag_id)
+    tag = get_object_or_404(Tag, id=tag_id, url__isnull=False)
     branch = tag.branch
     new_tag = Tag.objects.create(
         branch=branch,
@@ -616,6 +683,12 @@ def duplicate_tag(request, tag_id):
         utm_term=tag.utm_term,
         utm_content=tag.utm_content,
     )
+    _set_last_tag_action(
+        request,
+        "duplicate",
+        branch.id,
+        {"tag_ids": [new_tag.id]},
+    )
     messages.success(request, f"Метка {new_tag.number} успешно создана как копия {tag.number}!")
     return redirect("tags_list", branch_id=branch.id)
 
@@ -624,11 +697,50 @@ def duplicate_tag(request, tag_id):
 @require_POST
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def delete_tag(request, tag_id):
-    tag = get_object_or_404(Tag, id=tag_id)
+    tag = get_object_or_404(Tag, id=tag_id, url__isnull=False)
+    previous_tag_snapshot = _tag_snapshot(tag)
     branch_id = tag.branch_id
     tag_number = tag.number
-    tag.delete()
+    Tag.objects.filter(id=tag.id).update(**TAG_CLEAR_FIELDS)
+    _set_last_tag_action(
+        request,
+        "delete",
+        branch_id,
+        {"tag_id": tag.id, "fields": previous_tag_snapshot},
+    )
     messages.success(request, f"Метка {tag_number} удалена.")
+    return redirect("tags_list", branch_id=branch_id)
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
+def undo_tags_action(request, branch_id):
+    action = request.session.get(TAG_UNDO_SESSION_KEY)
+    if not action or action.get("branch_id") != branch_id:
+        messages.error(request, "Нет изменений для отмены.")
+        return redirect("tags_list", branch_id=branch_id)
+    payload = action.get("payload") or {}
+    action_type = action.get("action")
+    if action_type in {"edit", "delete"}:
+        tag_id = payload.get("tag_id")
+        fields = payload.get("fields") or {}
+        if tag_id and fields:
+            Tag.objects.filter(id=tag_id, branch_id=branch_id).update(**fields)
+            messages.success(request, "Последнее изменение отменено.")
+        else:
+            messages.error(request, "Нет данных для отмены изменения.")
+    elif action_type in {"create", "duplicate", "duplicate_all", "paste", "import"}:
+        tag_ids = payload.get("tag_ids") or []
+        if tag_ids:
+            Tag.objects.filter(id__in=tag_ids, branch_id=branch_id).update(**TAG_CLEAR_FIELDS)
+            messages.success(request, "Последнее действие отменено.")
+        else:
+            messages.error(request, "Нет данных для отмены действия.")
+    else:
+        messages.error(request, "Нет изменений для отмены.")
+    request.session.pop(TAG_UNDO_SESSION_KEY, None)
+    request.session.modified = True
     return redirect("tags_list", branch_id=branch_id)
 
 
