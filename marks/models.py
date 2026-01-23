@@ -156,6 +156,7 @@ class Tag(models.Model):
 
     class Meta:
         unique_together = ("branch", "number")
+        ordering = ["number"]
 
 
     def save(self, *args, **kwargs):
