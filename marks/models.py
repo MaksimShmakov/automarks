@@ -150,6 +150,7 @@ class Tag(models.Model):
     utm_campaign = models.CharField(max_length=255, blank=True, null=True)
     utm_term = models.CharField(max_length=255, blank=True, null=True)
     utm_content = models.CharField(max_length=255, blank=True, null=True)
+    budget = models.DecimalField(max_digits=12, decimal_places=2, default=None, null=True, blank=True, verbose_name="Бюджет")
     url = models.CharField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

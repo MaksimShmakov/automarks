@@ -57,16 +57,15 @@
 <div class="card shadow-sm mb-4">
   <div class="card-body p-0">
     <table class="table table-hover mb-0 align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>Номер</th>
+      <thead class="table-light">        <tr>
+          <th>ÐÐ¾Ð¼ÐµÑ</th>
           <th>utm_source</th>
           <th>utm_medium</th>
           <th>utm_campaign</th>
           <th>utm_term</th>
           <th>utm_content</th>
+          <th>ÐÑÐ´Ð¶ÐµÑ</th>
           <th>URL</th>
-          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -78,13 +77,16 @@
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_campaign">{{ tag.utm_campaign|default:"-" }}</td>
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_term">{{ tag.utm_term|default:"-" }}</td>
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_content">{{ tag.utm_content|default:"-" }}</td>
-          <td><a href="{{ tag.url }}" target="_blank" class="link-primary">{{ tag.url }}</a></td>
+          <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="budget">{{ tag.budget|default_if_none:"" }}</td>
           <td>
-            <a href="{% url 'duplicate_tag' tag.id %}" class="btn btn-sm btn-outline-secondary">Дублировать</a>
-            <form method="post" action="{% url 'delete_tag' tag.id %}" class="d-inline">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
-            </form>
+            <a href="{{ tag.url }}" target="_blank" class="link-primary">{{ tag.url }}</a>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <a href="{% url 'duplicate_tag' tag.id %}" class="btn btn-sm btn-outline-secondary">Дублировать</a>
+              <form method="post" action="{% url 'delete_tag' tag.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -120,6 +122,10 @@
       <div class="col-md-6">
         <label class="form-label">UTM content</label>
         {{ form.utm_content|add_class:"form-control" }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Бюджет</label>
+        {{ form.budget|add_class:"form-control" }}
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Создать метку</button>
@@ -192,20 +198,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function activateInput(cell) {
     if (cell.dataset.editing === '1') return;
+    const emptyPlaceholder = cell.dataset.field === 'budget' ? '' : '-';
     const initial = cell.innerText.trim();
     const input = document.createElement('input');
-    input.type = 'text';
+    if (cell.dataset.field === 'budget') {
+      input.type = 'number';
+      input.step = '0.01';
+    } else {
+      input.type = 'text';
+    }
     input.className = 'form-control form-control-sm';
-    input.value = (initial === '-' ? '' : initial);
+    input.value = (initial === emptyPlaceholder ? '' : initial);
     cell.innerHTML = '';
     cell.appendChild(input);
     cell.dataset.editing = '1';
     input.focus();
 
+    function renderValue(value) {
+      return value ? value : emptyPlaceholder;
+    }
+
     function commit(save) {
       const value = input.value.trim();
       cell.dataset.editing = '';
-      if (!save) { cell.textContent = initial || '-'; return; }
+      if (!save) { cell.textContent = renderValue(initial); return; }
       const payload = {
         id: cell.dataset.id,
         model: cell.dataset.model,
@@ -218,16 +234,16 @@ document.addEventListener('DOMContentLoaded', function() {
         body: JSON.stringify(payload)
       }).then(r => r.json()).then(data => {
         if (data && data.success) {
-          cell.textContent = value || '-';
+          cell.textContent = renderValue(value);
           cell.classList.add('bg-success-subtle');
           setTimeout(() => cell.classList.remove('bg-success-subtle'), 600);
         } else {
           alert('Ошибка: ' + (data && data.error || 'неизвестно'));
-          cell.textContent = initial || '-';
+          cell.textContent = renderValue(initial);
         }
       }).catch(err => {
         alert('Ошибка: ' + err);
-        cell.textContent = initial || '-';
+        cell.textContent = renderValue(initial);
       });
     }
 

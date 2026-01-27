@@ -138,7 +138,7 @@ class BranchForm(forms.ModelForm):
 class TagForm(forms.ModelForm):
     class Meta:
         model = Tag
-        fields = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
+        fields = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "budget"]
 
 
 class TagImportForm(forms.Form):

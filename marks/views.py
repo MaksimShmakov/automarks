@@ -35,6 +35,7 @@ from .permissions import require_roles, BOT_OPERATORS_GROUP
 
 TAG_UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
 TAG_CLEAR_FIELDS = {field: None for field in TAG_UTM_FIELDS}
+TAG_CLEAR_FIELDS["budget"] = None
 TAG_CLEAR_FIELDS["url"] = None
 TAG_UNDO_SESSION_KEY = "last_tag_action"
 
@@ -58,7 +59,10 @@ def _active_tags_qs(tags_qs):
     return tags_qs.filter(url__isnull=False)
 
 def _tag_snapshot(tag):
-    return {field: getattr(tag, field) for field in TAG_UTM_FIELDS + ["url"]}
+    snapshot = {field: getattr(tag, field) for field in TAG_UTM_FIELDS + ["budget", "url"]}
+    if snapshot.get("budget") is not None:
+        snapshot["budget"] = str(snapshot["budget"])
+    return snapshot
 
 def _set_last_tag_action(request, action, branch_id, payload):
     request.session[TAG_UNDO_SESSION_KEY] = {
@@ -257,7 +261,7 @@ def update_field(request):
     allowed_fields = {
         "plan": {"budget", "revenue_target", "warm_leads_target", "cold_leads_target", "notes"},
         "report": {"spend", "impressions", "clicks", "leads_warm", "leads_cold", "vendor", "notes", "platform", "month"},
-        "tag": {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"},
+        "tag": {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "budget"},
     }
 
 
@@ -282,7 +286,10 @@ def update_field(request):
 
 
         if itype in {"DecimalField"}:
-            coerced = Decimal(value or 0)
+            if model_type == "tag" and field == "budget" and (value is None or str(value).strip() == ""):
+                coerced = None
+            else:
+                coerced = Decimal(value or 0)
         elif itype in {"IntegerField", "PositiveIntegerField", "BigIntegerField"}:
             coerced = int(value or 0)
         elif itype in {"DateField"}:
@@ -332,6 +339,7 @@ def duplicate_all_tags(request, branch_id):
                 utm_campaign=tag.utm_campaign,
                 utm_term=tag.utm_term,
                 utm_content=tag.utm_content,
+                budget=tag.budget,
             )
             total_created += 1
             created_ids.append(new_tag.id)
@@ -410,6 +418,7 @@ def bot_api(request, bot_name):
                 "utm_campaign",
                 "utm_term",
                 "utm_content",
+                "budget",
                 "url",
             )
         )
@@ -582,9 +591,13 @@ def edit_tag(request, tag_id):
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def copy_tags(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
-    request.session["copied_tags"] = list(_active_tags_qs(branch.tags).values(
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"
+    copied = list(_active_tags_qs(branch.tags).values(
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "budget"
     ))
+    for tag in copied:
+        if tag.get("budget") is not None:
+            tag["budget"] = str(tag["budget"])
+    request.session["copied_tags"] = copied
     request.session.modified = True
     messages.success(request, "Таблица меток скопирована!")
     return redirect("tags_list", branch_id=branch.id)
@@ -657,10 +670,7 @@ def import_tags_csv(request, branch_id):
             for row in reader:
                 if not any((row.get(col) or "").strip() for col in expected):
                     continue
-                tag_kwargs = {
-                    col: (row.get(col) or "").strip() or None
-                    for col in expected
-                }
+                tag_kwargs = {col: (row.get(col) or "").strip() or None for col in expected}
                 new_tag = Tag.objects.create(branch=branch, **tag_kwargs)
                 created += 1
                 created_ids.append(new_tag.id)
@@ -698,6 +708,7 @@ def duplicate_tag(request, tag_id):
         utm_campaign=tag.utm_campaign,
         utm_term=tag.utm_term,
         utm_content=tag.utm_content,
+        budget=tag.budget,
     )
     _set_last_tag_action(
         request,
