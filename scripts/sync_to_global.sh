@@ -15,17 +15,28 @@ set +a
 : "${GLOBAL_PGDB:?}"
 : "${GLOBAL_PGUSER:?}"
 : "${GLOBAL_PGPASSWORD:?}"
+: "${GLOBAL_PGSCHEMA:=activation_data}"
 
-DUMP_FILE="/tmp/automarks_$(date +%F_%H%M).dump"
+RAW_SQL="/tmp/automarks_$(date +%F_%H%M).sql"
+PATCHED_SQL="/tmp/automarks_$(date +%F_%H%M)_patched.sql"
 
-# Dump local DB from docker container
-if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner --no-privileges > "$DUMP_FILE"; then
+# Dump local DB from docker container (public schema only)
+if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"   -Fp --schema=public --no-owner --no-privileges --clean --if-exists > "$RAW_SQL"; then
   echo "pg_dump failed" >&2
-  rm -f "$DUMP_FILE"
+  rm -f "$RAW_SQL"
   exit 1
 fi
 
-# Restore into global DB (drops/recreates objects from the dump only)
-docker run --rm   -e PGPASSWORD="$GLOBAL_PGPASSWORD"   -v /tmp:/tmp   postgres:16-alpine   pg_restore --clean --if-exists --no-owner --no-privileges   -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB"   "$DUMP_FILE"
+# Rewrite schema from public -> GLOBAL_PGSCHEMA
+{
+  echo "CREATE SCHEMA IF NOT EXISTS "$GLOBAL_PGSCHEMA";"
+  echo "SET search_path = "$GLOBAL_PGSCHEMA";"
+  sed -e "/^CREATE SCHEMA public;$/d"       -e "/^ALTER SCHEMA public /d"       -e "/^COMMENT ON SCHEMA public /d"       -e "s/\bpublic\./${GLOBAL_PGSCHEMA}./g"       -e "s/^SET search_path = public;/SET search_path = "${GLOBAL_PGSCHEMA}";/"       "$RAW_SQL"
+} > "$PATCHED_SQL"
 
-rm -f "$DUMP_FILE"
+# Restore into global DB
+# Drops/recreates objects from the dump only, in GLOBAL_PGSCHEMA
+
+docker run --rm   -e PGPASSWORD="$GLOBAL_PGPASSWORD"   -v /tmp:/tmp   postgres:16-alpine   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB"   -v ON_ERROR_STOP=1 -f "$PATCHED_SQL"
+
+rm -f "$RAW_SQL" "$PATCHED_SQL"
