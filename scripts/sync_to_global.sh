@@ -43,6 +43,7 @@ SQL
   sed \
     -e "/^CREATE SCHEMA public;$/d" \
     -e "/^DROP SCHEMA public;$/d" \
+    -e "/^DROP SCHEMA IF EXISTS public;$/d" \
     -e "/^ALTER SCHEMA public /d" \
     -e "/^COMMENT ON SCHEMA public /d" \
     -e "/^REVOKE .* ON SCHEMA public /d" \
