@@ -33,8 +33,16 @@ fi
 
 # Rewrite schema from public -> GLOBAL_PGSCHEMA
 {
-  printf 'CREATE SCHEMA IF NOT EXISTS "%s";\n' "$GLOBAL_PGSCHEMA"
-  printf 'SET search_path = "%s";\n' "$GLOBAL_PGSCHEMA"
+  cat <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = '$GLOBAL_PGSCHEMA') THEN
+    EXECUTE format('CREATE SCHEMA %I', '$GLOBAL_PGSCHEMA');
+  END IF;
+END
+\$\$;
+SET search_path = "$GLOBAL_PGSCHEMA";
+SQL
   sed \
     -e "/^CREATE SCHEMA public;$/d" \
     -e "/^ALTER SCHEMA public /d" \
