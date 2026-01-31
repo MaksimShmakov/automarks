@@ -19,7 +19,10 @@ set +a
 
 RAW_SQL="$(mktemp /tmp/automarks_raw_XXXX.sql)"
 PATCHED_SQL="$(mktemp /tmp/automarks_patched_XXXX.sql)"
-# TEMP: keep tmp files for debugging; remove after identifying failing statement
+cleanup() {
+  rm -f "$RAW_SQL" "$PATCHED_SQL"
+}
+trap cleanup EXIT
 
 # Dump local DB from docker container (public schema only)
 if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"   -Fp --schema=public --no-owner --no-privileges --clean --if-exists > "$RAW_SQL"; then
