@@ -50,6 +50,7 @@ fi
 
 docker run --rm \
   -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
+  -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
   -v /tmp:/tmp \
   postgres:16-alpine \
   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
