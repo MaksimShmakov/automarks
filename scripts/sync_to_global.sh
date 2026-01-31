@@ -45,8 +45,11 @@ SET search_path = "$GLOBAL_PGSCHEMA";
 SQL
   sed \
     -e "/^CREATE SCHEMA public;$/d" \
+    -e "/^DROP SCHEMA public;$/d" \
     -e "/^ALTER SCHEMA public /d" \
     -e "/^COMMENT ON SCHEMA public /d" \
+    -e "/^REVOKE .* ON SCHEMA public /d" \
+    -e "/^GRANT .* ON SCHEMA public /d" \
     -e "s/\\<public\\./${GLOBAL_PGSCHEMA}./g" \
     -e "s/^SET search_path = public, pg_catalog;/SET search_path = \"${GLOBAL_PGSCHEMA}\", pg_catalog;/" \
     -e "s/^SET search_path = public;/SET search_path = \"${GLOBAL_PGSCHEMA}\";/" \
