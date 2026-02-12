@@ -24,10 +24,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Dump local DB from docker container (public schema only)
-if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"   -Fp --schema=public --no-owner --no-privileges --clean --if-exists > "$RAW_SQL"; then
+# Dump local DB data only from docker container (public schema only).
+# We intentionally avoid --clean to keep dependent views in the global DB intact.
+if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -Fp --schema=public --data-only --no-owner --no-privileges > "$RAW_SQL"; then
   echo "pg_dump failed" >&2
   rm -f "$RAW_SQL"
+  exit 1
+fi
+
+# Build truncate list from dumped COPY commands.
+# This keeps custom tables in GLOBAL_PGSCHEMA untouched.
+TRUNCATE_LIST="$(
+  awk '/^COPY public\./ {tbl=$2; sub(/^public\./, "", tbl); print tbl}' "$RAW_SQL" \
+    | sort -u \
+    | awk -v schema="$GLOBAL_PGSCHEMA" '{printf "%s\"%s\".\"%s\"", NR==1?"":", ", schema, $1}'
+)"
+
+if [ -z "$TRUNCATE_LIST" ]; then
+  echo "No source tables found in dump; aborting" >&2
   exit 1
 fi
 
@@ -41,6 +56,7 @@ BEGIN
   END IF;
 END
 \$\$;
+TRUNCATE TABLE ${TRUNCATE_LIST} RESTART IDENTITY CASCADE;
 SET search_path = "$GLOBAL_PGSCHEMA";
 SQL
   sed \
@@ -58,7 +74,7 @@ SQL
 } > "$PATCHED_SQL"
 
 # Restore into global DB
-# Drops/recreates objects from the dump only, in GLOBAL_PGSCHEMA
+# Refreshes data in GLOBAL_PGSCHEMA without dropping table structure/views.
 
 docker run --rm \
   -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
