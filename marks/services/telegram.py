@@ -97,21 +97,21 @@ def _send_message(chat_id, text):
 
 def notify_new_task(task):
     chat_id = getattr(settings, "TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
-    platform_name = getattr(settings, "TASKS_PLATFORM_NAME", "Automarks")
-    header = f"[{_safe(platform_name)}] Новая задача"
+    platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
+    header = f"[{_safe(platform_name)}] Новая задача" if platform_name else "Новая задача"
     text = f"{header}\n\n{_build_task_details(task)}"
     return _send_message(chat_id=chat_id, text=text)
 
 
 def notify_status_change(task, old_status, changed_by):
     chat_id = getattr(settings, "TELEGRAM_NOTIFY_STATUS_CHAT_ID", "")
-    platform_name = getattr(settings, "TASKS_PLATFORM_NAME", "Automarks")
+    platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
     try:
         old_label = task.Status(old_status).label
     except Exception:
         old_label = old_status
     new_label = task.get_status_display()
-    header = f"[{_safe(platform_name)}] Изменение статуса задачи"
+    header = f"[{_safe(platform_name)}] Изменение статуса задачи" if platform_name else "Изменение статуса задачи"
     details = _build_task_details(task)
     text = (
         f"{header}\n\n"
