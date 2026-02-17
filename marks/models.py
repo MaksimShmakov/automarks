@@ -163,7 +163,7 @@ class TaskRequest(models.Model):
     build_name = models.CharField(max_length=255, blank=True, default="")
     build_token = models.CharField(max_length=255, blank=True, default="")
     comment = models.TextField(blank=True, default="")
-    deadline = models.DateField()
+    deadline = models.DateTimeField()
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

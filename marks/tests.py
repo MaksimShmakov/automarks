@@ -1,9 +1,10 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Bot, Branch, Product, TaskRequest, UserProfile
 
@@ -43,13 +44,14 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
     @patch("marks.views.notify_new_task")
     def test_create_patch_task(self, notify_mock):
         self.client.force_login(self.admin_user)
+        deadline = timezone.now() + timedelta(days=3)
         response = self.client.post(
             reverse("create_patch_task"),
             {
                 "branches": [self.branch.id],
                 "cjm_url": "https://example.com/cjm",
                 "comment": "Комментарий",
-                "deadline": (date.today() + timedelta(days=3)).isoformat(),
+                "deadline": deadline.strftime("%Y-%m-%dT%H:%M"),
             },
         )
 
@@ -70,7 +72,7 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
             build_name="bot + branches",
             build_token="1234567890",
             cjm_url="https://example.com/cjm",
-            deadline=date.today() + timedelta(days=1),
+            deadline=timezone.now() + timedelta(days=1),
             created_by=self.admin_user,
         )
         self.client.force_login(self.admin_user)

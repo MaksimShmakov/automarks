@@ -1,5 +1,6 @@
 import html
 import logging
+from datetime import datetime as dt_datetime
 from urllib import parse, request
 
 from django.conf import settings
@@ -20,10 +21,12 @@ def _format_datetime(dt):
     return timezone.localtime(dt).strftime("%d.%m.%Y %H:%M")
 
 
-def _format_date(d):
-    if not d:
+def _format_deadline(value):
+    if not value:
         return "-"
-    return d.strftime("%d.%m.%Y")
+    if isinstance(value, dt_datetime):
+        return timezone.localtime(value).strftime("%d.%m.%Y %H:%M")
+    return value.strftime("%d.%m.%Y")
 
 
 def _mask_token(value):
@@ -47,7 +50,7 @@ def _build_task_details(task):
         f"Статус: {_safe(task.get_status_display())}",
         f"Создал: {_safe(task.created_by.username if task.created_by else '-')}",
         f"Создано: {_format_datetime(task.created_at)}",
-        f"Дедлайн: {_format_date(task.deadline)}",
+        f"Дедлайн: {_format_deadline(task.deadline)}",
         f"Ветки: {_format_branches(task)}",
     ]
 

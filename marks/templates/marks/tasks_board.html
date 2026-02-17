@@ -2,6 +2,35 @@
 
 {% block title %}Задачи{% endblock %}
 
+{% block extra_head %}
+<style>
+  .task-branches {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    background: #fff;
+  }
+  .task-branches ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .task-branches li {
+    margin-bottom: 0.35rem;
+  }
+  .task-branches label {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .task-branches input {
+    margin-top: 0.2rem;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <h2 class="mb-3">Задачи</h2>
 
@@ -14,7 +43,7 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ patch_form.branches.label }}</label>
-            {{ patch_form.branches }}
+            <div class="task-branches">{{ patch_form.branches }}</div>
             {% if patch_form.branches.help_text %}
               <div class="form-text">{{ patch_form.branches.help_text }}</div>
             {% endif %}
@@ -56,7 +85,7 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ mailing_form.branches.label }}</label>
-            {{ mailing_form.branches }}
+            <div class="task-branches">{{ mailing_form.branches }}</div>
             {% if mailing_form.branches.help_text %}
               <div class="form-text">{{ mailing_form.branches.help_text }}</div>
             {% endif %}
@@ -156,7 +185,7 @@
 
                 <div class="small text-muted mb-1">Создал: {{ task.created_by.username|default:"-" }}</div>
                 <div class="small text-muted mb-1">Создано: {{ task.created_at|date:"d.m.Y H:i" }}</div>
-                <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|date:"d.m.Y" }}</div>
+                <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|date:"d.m.Y H:i" }}</div>
                 <div class="small text-muted mb-2">Окончание: {% if task.completed_at %}{{ task.completed_at|date:"d.m.Y H:i" }}{% else %}-{% endif %}</div>
 
                 {% with branches=task.branches.all %}
