@@ -13,6 +13,13 @@ from ..models import TaskRequest
 logger = logging.getLogger(__name__)
 
 
+def _clean_env_value(value):
+    value = (value or "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    return value
+
+
 def _safe(value):
     return html.escape(str(value))
 
@@ -75,8 +82,8 @@ def _build_task_details(task):
 
 
 def _send_message(chat_id, text):
-    token = (getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", "") or "").strip()
-    chat_id = (chat_id or "").strip()
+    token = _clean_env_value(getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", ""))
+    chat_id = _clean_env_value(chat_id)
     if not token or not chat_id:
         return False, "Не задан TELEGRAM_NOTIFY_BOT_TOKEN или chat_id"
 
