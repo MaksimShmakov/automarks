@@ -883,8 +883,10 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
         task.save()
         if hasattr(form, "save_m2m"):
             form.save_m2m()
-        notify_new_task(task)
+        notify_ok = notify_new_task(task)
         messages.success(request, success_message)
+        if not notify_ok:
+            messages.warning(request, "Задача создана, но уведомление в Telegram не отправлено. Проверьте token/chat_id и перезапуск сервиса.")
         return redirect("tasks_board")
 
     messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
@@ -949,8 +951,10 @@ def update_task_status(request, task_id):
 
     form.save()
     if old_status != task.status:
-        notify_status_change(task=task, old_status=old_status, changed_by=request.user)
+        notify_ok = notify_status_change(task=task, old_status=old_status, changed_by=request.user)
         messages.success(request, "Статус задачи обновлён.")
+        if not notify_ok:
+            messages.warning(request, "Статус обновлён, но уведомление в Telegram не отправлено. Проверьте token/chat_id и перезапуск сервиса.")
     else:
         messages.info(request, "Статус не изменился.")
     return redirect("tasks_board")

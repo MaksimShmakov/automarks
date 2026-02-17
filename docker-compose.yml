@@ -9,6 +9,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TELEGRAM_NOTIFY_BOT_TOKEN: ${TELEGRAM_NOTIFY_BOT_TOKEN}
+      TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID: ${TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID}
+      TELEGRAM_NOTIFY_STATUS_CHAT_ID: ${TELEGRAM_NOTIFY_STATUS_CHAT_ID}
+      TASKS_PLATFORM_NAME: ${TASKS_PLATFORM_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
