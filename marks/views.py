@@ -883,10 +883,18 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
         task.save()
         if hasattr(form, "save_m2m"):
             form.save_m2m()
-        notify_ok = notify_new_task(task)
+        notify_result = notify_new_task(task)
+        if isinstance(notify_result, tuple):
+            notify_ok, notify_error = notify_result
+        else:
+            notify_ok, notify_error = bool(notify_result), ""
         messages.success(request, success_message)
         if not notify_ok:
-            messages.warning(request, "Задача создана, но уведомление в Telegram не отправлено. Проверьте token/chat_id и перезапуск сервиса.")
+            messages.warning(
+                request,
+                "Задача создана, но уведомление в Telegram не отправлено. "
+                + (notify_error or "Проверьте token/chat_id и перезапуск сервиса."),
+            )
         return redirect("tasks_board")
 
     messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
@@ -951,10 +959,18 @@ def update_task_status(request, task_id):
 
     form.save()
     if old_status != task.status:
-        notify_ok = notify_status_change(task=task, old_status=old_status, changed_by=request.user)
+        notify_result = notify_status_change(task=task, old_status=old_status, changed_by=request.user)
+        if isinstance(notify_result, tuple):
+            notify_ok, notify_error = notify_result
+        else:
+            notify_ok, notify_error = bool(notify_result), ""
         messages.success(request, "Статус задачи обновлён.")
         if not notify_ok:
-            messages.warning(request, "Статус обновлён, но уведомление в Telegram не отправлено. Проверьте token/chat_id и перезапуск сервиса.")
+            messages.warning(
+                request,
+                "Статус обновлён, но уведомление в Telegram не отправлено. "
+                + (notify_error or "Проверьте token/chat_id и перезапуск сервиса."),
+            )
     else:
         messages.info(request, "Статус не изменился.")
     return redirect("tasks_board")

@@ -1,7 +1,9 @@
 import html
 import logging
 from datetime import datetime as dt_datetime
+from urllib.error import HTTPError, URLError
 from urllib import parse, request
+import json
 
 from django.conf import settings
 from django.utils import timezone
@@ -76,7 +78,7 @@ def _send_message(chat_id, text):
     token = (getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", "") or "").strip()
     chat_id = (chat_id or "").strip()
     if not token or not chat_id:
-        return False
+        return False, "Не задан TELEGRAM_NOTIFY_BOT_TOKEN или chat_id"
 
     payload = {
         "chat_id": chat_id,
@@ -89,10 +91,23 @@ def _send_message(chat_id, text):
     try:
         req = request.Request(url=url, data=data, method="POST")
         with request.urlopen(req, timeout=7):
-            return True
+            return True, ""
+    except HTTPError as exc:
+        details = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+            data = json.loads(body)
+            details = data.get("description") or body
+        except Exception:
+            details = str(exc)
+        logger.exception("Telegram HTTP error")
+        return False, f"Telegram API error: {details}"
+    except URLError as exc:
+        logger.exception("Telegram URL error")
+        return False, f"Telegram network error: {exc.reason}"
     except Exception:
         logger.exception("Failed to send Telegram notification")
-        return False
+        return False, "Неизвестная ошибка отправки в Telegram"
 
 
 def notify_new_task(task):
