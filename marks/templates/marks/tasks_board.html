@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Задачи{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Задачи</h2>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-light"><b>Заявка на правку</b></div>
+      <div class="card-body">
+        <form method="post" action="{% url 'create_patch_task' %}" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">{{ patch_form.branches.label }}</label>
+            {{ patch_form.branches }}
+            {% if patch_form.branches.help_text %}
+              <div class="form-text">{{ patch_form.branches.help_text }}</div>
+            {% endif %}
+            {% for error in patch_form.branches.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ patch_form.cjm_url.label }}</label>
+            {{ patch_form.cjm_url }}
+            {% for error in patch_form.cjm_url.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ patch_form.comment.label }}</label>
+            {{ patch_form.comment }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ patch_form.deadline.label }}</label>
+            {{ patch_form.deadline }}
+            {% for error in patch_form.deadline.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary w-100">Создать</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-light"><b>Заявка на рассылку</b></div>
+      <div class="card-body">
+        <form method="post" action="{% url 'create_mailing_task' %}" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">{{ mailing_form.branches.label }}</label>
+            {{ mailing_form.branches }}
+            {% if mailing_form.branches.help_text %}
+              <div class="form-text">{{ mailing_form.branches.help_text }}</div>
+            {% endif %}
+            {% for error in mailing_form.branches.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ mailing_form.tz_url.label }}</label>
+            {{ mailing_form.tz_url }}
+            {% for error in mailing_form.tz_url.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ mailing_form.comment.label }}</label>
+            {{ mailing_form.comment }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ mailing_form.deadline.label }}</label>
+            {{ mailing_form.deadline }}
+            {% for error in mailing_form.deadline.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary w-100">Создать</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-light"><b>Заявка на сборку бота</b></div>
+      <div class="card-body">
+        <form method="post" action="{% url 'create_build_task' %}" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">{{ build_form.build_name.label }}</label>
+            {{ build_form.build_name }}
+            {% for error in build_form.build_name.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ build_form.build_token.label }}</label>
+            {{ build_form.build_token }}
+            {% for error in build_form.build_token.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ build_form.cjm_url.label }}</label>
+            {{ build_form.cjm_url }}
+            {% for error in build_form.cjm_url.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ build_form.comment.label }}</label>
+            {{ build_form.comment }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ build_form.deadline.label }}</label>
+            {{ build_form.deadline }}
+            {% for error in build_form.deadline.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary w-100">Создать</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for column in kanban_columns %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100 border-0">
+        <div class="card-header bg-{{ column.color }} {{ column.text }} d-flex justify-content-between align-items-center">
+          <span>{{ column.title }}</span>
+          <span class="badge text-bg-light">{{ column.tasks|length }}</span>
+        </div>
+        <div class="card-body bg-light">
+          {% for task in column.tasks %}
+            <div class="card mb-3 border-start border-4 {% if task.status == 'done' %}border-success{% elif task.status == 'in_progress' %}border-warning{% else %}border-secondary{% endif %}">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge text-bg-dark">#{{ task.id }}</span>
+                  <span class="badge text-bg-info">{{ task.get_task_type_display }}</span>
+                </div>
+
+                <div class="small text-muted mb-1">Создал: {{ task.created_by.username|default:"-" }}</div>
+                <div class="small text-muted mb-1">Создано: {{ task.created_at|date:"d.m.Y H:i" }}</div>
+                <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|date:"d.m.Y" }}</div>
+                <div class="small text-muted mb-2">Окончание: {% if task.completed_at %}{{ task.completed_at|date:"d.m.Y H:i" }}{% else %}-{% endif %}</div>
+
+                {% with branches=task.branches.all %}
+                  {% if branches %}
+                    <div class="mb-2">
+                      {% for branch in branches %}
+                        <span class="badge rounded-pill text-bg-light border">{{ branch }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+
+                {% if task.task_type == 'patch' %}
+                  <div class="small mb-1"><b>CJM:</b> <a href="{{ task.cjm_url }}" target="_blank" rel="noopener">{{ task.cjm_url }}</a></div>
+                {% elif task.task_type == 'mailing' %}
+                  <div class="small mb-1"><b>ТЗ:</b> <a href="{{ task.tz_url }}" target="_blank" rel="noopener">{{ task.tz_url }}</a></div>
+                {% elif task.task_type == 'build' %}
+                  <div class="small mb-1"><b>Бот и ветки:</b> {{ task.build_name }}</div>
+                  <div class="small mb-1"><b>Токен:</b> <span class="text-break">{{ task.build_token }}</span></div>
+                  <div class="small mb-1"><b>CJM:</b> <a href="{{ task.cjm_url }}" target="_blank" rel="noopener">{{ task.cjm_url }}</a></div>
+                {% endif %}
+
+                {% if task.comment %}
+                  <div class="small mt-2"><b>Комментарий:</b> {{ task.comment }}</div>
+                {% endif %}
+
+                <form method="post" action="{% url 'update_task_status' task.id %}" class="d-flex gap-2 mt-3">
+                  {% csrf_token %}
+                  <select name="status" class="form-select form-select-sm">
+                    {% for value, label in status_choices %}
+                      <option value="{{ value }}" {% if value == task.status %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary">Сохранить</button>
+                </form>
+              </div>
+            </div>
+          {% empty %}
+            <div class="text-muted small">Задач пока нет.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -157,3 +157,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://automarks.tw1.ru",
     "https://www.automarks.tw1.ru"
 ]
+
+
+TELEGRAM_NOTIFY_BOT_TOKEN = os.getenv("TELEGRAM_NOTIFY_BOT_TOKEN", "")
+TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
+TELEGRAM_NOTIFY_STATUS_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_STATUS_CHAT_ID", "")
+TASKS_PLATFORM_NAME = os.getenv("TASKS_PLATFORM_NAME", "Automarks")

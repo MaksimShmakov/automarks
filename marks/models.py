@@ -3,6 +3,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
 class Product(models.Model):
@@ -140,6 +141,47 @@ class Branch(models.Model):
 
     def __str__(self):
         return f"{self.bot.name} - {self.name} ({self.code})"
+
+
+class TaskRequest(models.Model):
+    class Type(models.TextChoices):
+        PATCH = "patch", "Правка в ветках бота"
+        MAILING = "mailing", "Рассылка"
+        BUILD = "build", "Сборка бота"
+
+    class Status(models.TextChoices):
+        UNREAD = "unread", "Непрочитанное"
+        IN_PROGRESS = "in_progress", "В процессе"
+        DONE = "done", "Готово"
+
+    task_type = models.CharField(max_length=20, choices=Type.choices)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.UNREAD)
+    branches = models.ManyToManyField(Branch, related_name="task_requests", blank=True)
+
+    cjm_url = models.URLField(blank=True, default="")
+    tz_url = models.URLField(blank=True, default="")
+    build_name = models.CharField(max_length=255, blank=True, default="")
+    build_token = models.CharField(max_length=255, blank=True, default="")
+    comment = models.TextField(blank=True, default="")
+    deadline = models.DateField()
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"#{self.id} {self.get_task_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if self.status == self.Status.DONE and self.completed_at is None:
+            self.completed_at = timezone.now()
+        elif self.status != self.Status.DONE and self.completed_at is not None:
+            self.completed_at = None
+        super().save(*args, **kwargs)
 
 
 class Tag(models.Model):

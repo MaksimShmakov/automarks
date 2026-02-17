@@ -9,6 +9,7 @@ from .models import (
     TrafficReport,
     PatchNote,
     UserProfile,
+    TaskRequest,
 )
 
 
@@ -71,3 +72,11 @@ class PatchNoteAdmin(admin.ModelAdmin):
     list_display = ("branch", "title", "change_type", "created_by", "created_at")
     list_filter = ("change_type", "branch__bot__product")
     search_fields = ("title", "change_description")
+
+
+@admin.register(TaskRequest)
+class TaskRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "task_type", "status", "deadline", "created_by", "created_at", "completed_at")
+    list_filter = ("task_type", "status", "deadline")
+    search_fields = ("comment", "build_name", "cjm_url", "tz_url", "created_by__username")
+    filter_horizontal = ("branches",)

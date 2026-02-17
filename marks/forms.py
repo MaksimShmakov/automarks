@@ -2,10 +2,18 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
-
-from .models import Bot, Branch, Tag
-from django import forms
-from .models import Product, PlanMonthly, BranchPlanMonthly, Funnel, TrafficReport, PatchNote
+from .models import (
+    Bot,
+    Branch,
+    BranchPlanMonthly,
+    Funnel,
+    PatchNote,
+    PlanMonthly,
+    Product,
+    Tag,
+    TaskRequest,
+    TrafficReport,
+)
 
 
 class ProductForm(forms.ModelForm):
@@ -43,7 +51,6 @@ class FunnelMasterForm(forms.Form):
     description = forms.CharField(required=False, widget=forms.Textarea, label="Описание")
     is_active = forms.BooleanField(required=False, initial=True, label="Активна")
 
-
     def clean(self):
         cleaned = super().clean()
         if cleaned.get("type") == "funnel" and not cleaned.get("product"):
@@ -72,7 +79,6 @@ class PatchNoteForm(forms.Form):
         label="Ветки",
     )
 
-
     def __init__(self, *args, branches=None, **kwargs):
         super().__init__(*args, **kwargs)
         if branches is None:
@@ -85,11 +91,10 @@ class CustomUserCreationForm(UserCreationForm):
         model = User
         fields = ("username", "password1", "password2")
 
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
-            field.widget.attrs.update({'class': 'form-control'})
+            field.widget.attrs.update({"class": "form-control"})
 
 
 class BotForm(forms.ModelForm):
@@ -111,7 +116,6 @@ class BotDetailsForm(forms.ModelForm):
 class BotStatusForm(forms.Form):
     inactive = forms.BooleanField(required=False, label="Бот неактивен")
 
-
     def __init__(self, *args, bot=None, **kwargs):
         self.bot = bot
         if self.bot is None:
@@ -119,7 +123,6 @@ class BotStatusForm(forms.Form):
         super().__init__(*args, **kwargs)
         if not self.is_bound:
             self.fields["inactive"].initial = not self.bot.is_active
-
 
     def save(self):
         if not self.is_valid():
@@ -148,9 +151,121 @@ class TagImportForm(forms.Form):
         help_text="Загрузите CSV со столбцами: " + ", ".join(EXPECTED_COLUMNS),
     )
 
-
     def clean_file(self):
         uploaded = self.cleaned_data["file"]
         if not uploaded.name.lower().endswith(".csv"):
             raise forms.ValidationError("Нужен файл CSV.")
         return uploaded
+
+
+class BaseTaskRequestForm(forms.ModelForm):
+    class Meta:
+        model = TaskRequest
+        fields = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            if name == "branches":
+                field.queryset = Branch.objects.select_related("bot").order_by("bot__name", "name")
+                field.widget = forms.SelectMultiple(attrs={"class": "form-select", "size": 8})
+                field.help_text = "Можно выбрать несколько веток (Ctrl/Cmd + клик)."
+                continue
+            if name == "deadline":
+                field.widget = forms.DateInput(attrs={"type": "date", "class": "form-control"})
+                continue
+            if name == "comment":
+                field.widget = forms.Textarea(attrs={"class": "form-control", "rows": 3})
+                continue
+            if name == "build_token":
+                field.widget = forms.PasswordInput(render_value=True, attrs={"class": "form-control"})
+                continue
+            field.widget.attrs["class"] = "form-control"
+
+    def _set_type(self, obj, task_type):
+        obj.task_type = task_type
+        return obj
+
+
+class PatchTaskRequestForm(BaseTaskRequestForm):
+    class Meta:
+        model = TaskRequest
+        fields = ["branches", "cjm_url", "comment", "deadline"]
+        labels = {
+            "branches": "Ветки",
+            "cjm_url": "CJM (ссылка)",
+            "comment": "Комментарий",
+            "deadline": "Дедлайн",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["branches"].required = True
+        self.fields["cjm_url"].required = True
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        self._set_type(obj, TaskRequest.Type.PATCH)
+        if commit:
+            obj.save()
+            self.save_m2m()
+        return obj
+
+
+class MailingTaskRequestForm(BaseTaskRequestForm):
+    class Meta:
+        model = TaskRequest
+        fields = ["branches", "tz_url", "comment", "deadline"]
+        labels = {
+            "branches": "Ветки",
+            "tz_url": "ТЗ (ссылка)",
+            "comment": "Комментарий",
+            "deadline": "Дедлайн",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["branches"].required = True
+        self.fields["tz_url"].required = True
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        self._set_type(obj, TaskRequest.Type.MAILING)
+        if commit:
+            obj.save()
+            self.save_m2m()
+        return obj
+
+
+class BuildTaskRequestForm(BaseTaskRequestForm):
+    class Meta:
+        model = TaskRequest
+        fields = ["build_name", "build_token", "cjm_url", "comment", "deadline"]
+        labels = {
+            "build_name": "Название бота и веток",
+            "build_token": "Токен",
+            "cjm_url": "CJM (ссылка)",
+            "comment": "Комментарий",
+            "deadline": "Дедлайн",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["build_name"].required = True
+        self.fields["build_token"].required = True
+        self.fields["cjm_url"].required = True
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        self._set_type(obj, TaskRequest.Type.BUILD)
+        if commit:
+            obj.save()
+        return obj
+
+
+class TaskStatusForm(forms.ModelForm):
+    class Meta:
+        model = TaskRequest
+        fields = ["status"]
+        labels = {"status": "Статус"}
+        widgets = {"status": forms.Select(attrs={"class": "form-select form-select-sm"})}

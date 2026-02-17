@@ -21,7 +21,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 
-from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile
+from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest
 from .forms import (
     BotForm,
     BotStatusForm,
@@ -30,8 +30,13 @@ from .forms import (
     TagForm,
     CustomUserCreationForm,
     TagImportForm,
+    PatchTaskRequestForm,
+    MailingTaskRequestForm,
+    BuildTaskRequestForm,
+    TaskStatusForm,
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
+from .services.telegram import notify_new_task, notify_status_change
 
 TAG_UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
 TAG_CLEAR_FIELDS = {field: None for field in TAG_UTM_FIELDS}
@@ -804,3 +809,135 @@ def product_reports(request, product_id):
 
 
     return render(request, "marks/product_reports.html", {"product": product, "plans": plans, "reports": reports})
+
+
+def _tasks_board_context(
+    patch_form=None,
+    mailing_form=None,
+    build_form=None,
+):
+    tasks = list(
+        TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
+    )
+    columns = [
+        {
+            "status": TaskRequest.Status.UNREAD,
+            "title": "Непрочитанное",
+            "color": "secondary",
+            "text": "text-white",
+            "tasks": [],
+        },
+        {
+            "status": TaskRequest.Status.IN_PROGRESS,
+            "title": "В процессе",
+            "color": "warning",
+            "text": "text-dark",
+            "tasks": [],
+        },
+        {
+            "status": TaskRequest.Status.DONE,
+            "title": "Готово",
+            "color": "success",
+            "text": "text-white",
+            "tasks": [],
+        },
+    ]
+    for task in tasks:
+        for column in columns:
+            if task.status == column["status"]:
+                column["tasks"].append(task)
+                break
+    return {
+        "patch_form": patch_form or PatchTaskRequestForm(),
+        "mailing_form": mailing_form or MailingTaskRequestForm(),
+        "build_form": build_form or BuildTaskRequestForm(),
+        "kanban_columns": columns,
+        "status_choices": TaskRequest.Status.choices,
+    }
+
+
+@login_required
+@require_roles(UserProfile.Role.ADMIN)
+def tasks_board(request):
+    return render(request, "marks/tasks_board.html", _tasks_board_context())
+
+
+def _handle_task_create(request, form, success_message, invalid_form_key):
+    if form.is_valid():
+        task = form.save(commit=False)
+        task.created_by = request.user
+        task.status = TaskRequest.Status.UNREAD
+        task.save()
+        if hasattr(form, "save_m2m"):
+            form.save_m2m()
+        notify_new_task(task)
+        messages.success(request, success_message)
+        return redirect("tasks_board")
+
+    messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
+    forms_state = {
+        "patch_form": PatchTaskRequestForm(),
+        "mailing_form": MailingTaskRequestForm(),
+        "build_form": BuildTaskRequestForm(),
+    }
+    forms_state[invalid_form_key] = form
+    return render(request, "marks/tasks_board.html", _tasks_board_context(**forms_state))
+
+
+@login_required
+@require_POST
+@require_roles(UserProfile.Role.ADMIN)
+def create_patch_task(request):
+    form = PatchTaskRequestForm(request.POST)
+    return _handle_task_create(
+        request,
+        form,
+        "Заявка на правку создана.",
+        "patch_form",
+    )
+
+
+@login_required
+@require_POST
+@require_roles(UserProfile.Role.ADMIN)
+def create_mailing_task(request):
+    form = MailingTaskRequestForm(request.POST)
+    return _handle_task_create(
+        request,
+        form,
+        "Заявка на рассылку создана.",
+        "mailing_form",
+    )
+
+
+@login_required
+@require_POST
+@require_roles(UserProfile.Role.ADMIN)
+def create_build_task(request):
+    form = BuildTaskRequestForm(request.POST)
+    return _handle_task_create(
+        request,
+        form,
+        "Заявка на сборку бота создана.",
+        "build_form",
+    )
+
+
+@login_required
+@require_POST
+@require_roles(UserProfile.Role.ADMIN)
+def update_task_status(request, task_id):
+    task = get_object_or_404(TaskRequest, id=task_id)
+    old_status = task.status
+    form = TaskStatusForm(request.POST, instance=task)
+    if not form.is_valid():
+        messages.error(request, "Не удалось обновить статус задачи.")
+        return redirect("tasks_board")
+
+    form.save()
+    if old_status != task.status:
+        notify_status_change(task=task, old_status=old_status, changed_by=request.user)
+        messages.success(request, "Статус задачи обновлён.")
+    else:
+        messages.info(request, "Статус не изменился.")
+    return redirect("tasks_board")
