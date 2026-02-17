@@ -816,6 +816,7 @@ def _tasks_board_context(
     mailing_form=None,
     build_form=None,
 ):
+    branch_total = Branch.objects.count()
     tasks = list(
         TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
     )
@@ -851,6 +852,7 @@ def _tasks_board_context(
         "patch_form": patch_form or PatchTaskRequestForm(prefix="patch"),
         "mailing_form": mailing_form or MailingTaskRequestForm(prefix="mailing"),
         "build_form": build_form or BuildTaskRequestForm(prefix="build"),
+        "branch_total": branch_total,
         "kanban_columns": columns,
         "status_choices": TaskRequest.Status.choices,
     }

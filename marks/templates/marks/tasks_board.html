@@ -33,6 +33,7 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ patch_form.branches.label }}</label>
+            <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
             <input
               type="text"
               class="form-control form-control-sm mb-2 branch-search"
@@ -92,6 +93,7 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ mailing_form.branches.label }}</label>
+            <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
             <input
               type="text"
               class="form-control form-control-sm mb-2 branch-search"

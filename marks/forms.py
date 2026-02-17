@@ -158,11 +158,6 @@ class TagImportForm(forms.Form):
         return uploaded
 
 
-class BranchTaskChoiceField(forms.ModelMultipleChoiceField):
-    def label_from_instance(self, obj):
-        return f"{obj.bot.name} / {obj.name} ({obj.code})"
-
-
 class BaseTaskRequestForm(forms.ModelForm):
     class Meta:
         model = TaskRequest
@@ -170,9 +165,12 @@ class BaseTaskRequestForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        def branch_label(obj):
+            return f"{obj.bot.name} / {obj.name} ({obj.code})"
         for name, field in self.fields.items():
             if name == "branches":
                 field.queryset = Branch.objects.select_related("bot").order_by("bot__name", "name")
+                field.label_from_instance = branch_label
                 field.widget = forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"})
                 if field.queryset.exists():
                     field.help_text = "Список веток: Бот / Ветка (код). Можно выбрать несколько."
@@ -200,12 +198,11 @@ class BaseTaskRequestForm(forms.ModelForm):
 
 
 class PatchTaskRequestForm(BaseTaskRequestForm):
-    branches = BranchTaskChoiceField(queryset=Branch.objects.none(), label="Ветки", required=True)
-
     class Meta:
         model = TaskRequest
         fields = ["branches", "cjm_url", "comment", "deadline"]
         labels = {
+            "branches": "Ветки",
             "cjm_url": "CJM (ссылка)",
             "comment": "Комментарий",
             "deadline": "Дедлайн",
@@ -213,6 +210,7 @@ class PatchTaskRequestForm(BaseTaskRequestForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["branches"].required = True
         self.fields["cjm_url"].required = True
 
     def save(self, commit=True):
@@ -225,12 +223,11 @@ class PatchTaskRequestForm(BaseTaskRequestForm):
 
 
 class MailingTaskRequestForm(BaseTaskRequestForm):
-    branches = BranchTaskChoiceField(queryset=Branch.objects.none(), label="Ветки", required=True)
-
     class Meta:
         model = TaskRequest
         fields = ["branches", "tz_url", "comment", "deadline"]
         labels = {
+            "branches": "Ветки",
             "tz_url": "ТЗ (ссылка)",
             "comment": "Комментарий",
             "deadline": "Дедлайн",
@@ -238,6 +235,7 @@ class MailingTaskRequestForm(BaseTaskRequestForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["branches"].required = True
         self.fields["tz_url"].required = True
 
     def save(self, commit=True):
