@@ -173,11 +173,18 @@ class BaseTaskRequestForm(forms.ModelForm):
         for name, field in self.fields.items():
             if name == "branches":
                 field.queryset = Branch.objects.select_related("bot").order_by("bot__name", "name")
-                field.widget = forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"})
+                field.widget = forms.SelectMultiple(
+                    attrs={
+                        "class": "form-select task-branch-select",
+                        "size": 8,
+                        "data-branch-select": "1",
+                    }
+                )
                 if field.queryset.exists():
-                    field.help_text = "Выберите одну или несколько веток."
+                    field.help_text = "Список веток: Бот / Ветка (код). Можно выбрать несколько."
                 else:
                     field.help_text = "Нет доступных веток. Сначала добавьте их в разделе 'Боты'."
+                    field.widget.attrs["disabled"] = "disabled"
                 continue
             if name == "deadline":
                 field.input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"]

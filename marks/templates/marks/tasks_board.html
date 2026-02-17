@@ -5,28 +5,10 @@
 {% block extra_head %}
 <style>
   .task-branches {
-    max-height: 220px;
-    overflow: auto;
-    border: 1px solid #dee2e6;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    background: #fff;
+    min-height: 220px;
   }
-  .task-branches ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .task-branches li {
-    margin-bottom: 0.35rem;
-  }
-  .task-branches label {
-    display: flex;
-    gap: 0.5rem;
-    align-items: flex-start;
-  }
-  .task-branches input {
-    margin-top: 0.2rem;
+  .task-branches select {
+    min-height: 220px;
   }
 </style>
 {% endblock %}
@@ -43,6 +25,12 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ patch_form.branches.label }}</label>
+            <input
+              type="text"
+              class="form-control form-control-sm mb-2 branch-search"
+              data-target="{{ patch_form.branches.id_for_label }}"
+              placeholder="Поиск по боту или ветке..."
+            >
             <div class="task-branches">{{ patch_form.branches }}</div>
             {% if patch_form.branches.help_text %}
               <div class="form-text">{{ patch_form.branches.help_text }}</div>
@@ -85,6 +73,12 @@
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">{{ mailing_form.branches.label }}</label>
+            <input
+              type="text"
+              class="form-control form-control-sm mb-2 branch-search"
+              data-target="{{ mailing_form.branches.id_for_label }}"
+              placeholder="Поиск по боту или ветке..."
+            >
             <div class="task-branches">{{ mailing_form.branches }}</div>
             {% if mailing_form.branches.help_text %}
               <div class="form-text">{{ mailing_form.branches.help_text }}</div>
@@ -231,4 +225,26 @@
     </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function() {
+    const inputs = document.querySelectorAll('.branch-search');
+    inputs.forEach(function(input) {
+      const selectId = input.getAttribute('data-target');
+      const select = document.getElementById(selectId);
+      if (!select) return;
+      const options = Array.from(select.options);
+
+      input.addEventListener('input', function() {
+        const query = (input.value || '').toLowerCase().trim();
+        options.forEach(function(option) {
+          const visible = !query || option.text.toLowerCase().includes(query) || option.selected;
+          option.hidden = !visible;
+        });
+      });
+    });
+  })();
+</script>
 {% endblock %}

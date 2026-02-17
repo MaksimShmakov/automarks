@@ -848,9 +848,9 @@ def _tasks_board_context(
                 column["tasks"].append(task)
                 break
     return {
-        "patch_form": patch_form or PatchTaskRequestForm(),
-        "mailing_form": mailing_form or MailingTaskRequestForm(),
-        "build_form": build_form or BuildTaskRequestForm(),
+        "patch_form": patch_form or PatchTaskRequestForm(prefix="patch"),
+        "mailing_form": mailing_form or MailingTaskRequestForm(prefix="mailing"),
+        "build_form": build_form or BuildTaskRequestForm(prefix="build"),
         "kanban_columns": columns,
         "status_choices": TaskRequest.Status.choices,
     }
@@ -876,9 +876,9 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
 
     messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
     forms_state = {
-        "patch_form": PatchTaskRequestForm(),
-        "mailing_form": MailingTaskRequestForm(),
-        "build_form": BuildTaskRequestForm(),
+        "patch_form": PatchTaskRequestForm(prefix="patch"),
+        "mailing_form": MailingTaskRequestForm(prefix="mailing"),
+        "build_form": BuildTaskRequestForm(prefix="build"),
     }
     forms_state[invalid_form_key] = form
     return render(request, "marks/tasks_board.html", _tasks_board_context(**forms_state))
@@ -888,7 +888,7 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
 @require_POST
 @require_roles(UserProfile.Role.ADMIN)
 def create_patch_task(request):
-    form = PatchTaskRequestForm(request.POST)
+    form = PatchTaskRequestForm(request.POST, prefix="patch")
     return _handle_task_create(
         request,
         form,
@@ -901,7 +901,7 @@ def create_patch_task(request):
 @require_POST
 @require_roles(UserProfile.Role.ADMIN)
 def create_mailing_task(request):
-    form = MailingTaskRequestForm(request.POST)
+    form = MailingTaskRequestForm(request.POST, prefix="mailing")
     return _handle_task_create(
         request,
         form,
@@ -914,7 +914,7 @@ def create_mailing_task(request):
 @require_POST
 @require_roles(UserProfile.Role.ADMIN)
 def create_build_task(request):
-    form = BuildTaskRequestForm(request.POST)
+    form = BuildTaskRequestForm(request.POST, prefix="build")
     return _handle_task_create(
         request,
         form,

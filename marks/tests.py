@@ -48,10 +48,10 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         response = self.client.post(
             reverse("create_patch_task"),
             {
-                "branches": [self.branch.id],
-                "cjm_url": "https://example.com/cjm",
-                "comment": "Комментарий",
-                "deadline": deadline.strftime("%Y-%m-%dT%H:%M"),
+                "patch-branches": [self.branch.id],
+                "patch-cjm_url": "https://example.com/cjm",
+                "patch-comment": "Комментарий",
+                "patch-deadline": deadline.strftime("%Y-%m-%dT%H:%M"),
             },
         )
 
