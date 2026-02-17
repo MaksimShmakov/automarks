@@ -816,7 +816,15 @@ def _tasks_board_context(
     mailing_form=None,
     build_form=None,
 ):
-    branch_total = Branch.objects.count()
+    branch_options = list(Branch.objects.select_related("bot").order_by("bot__name", "name"))
+    branch_total = len(branch_options)
+    patch_form = patch_form or PatchTaskRequestForm(prefix="patch")
+    mailing_form = mailing_form or MailingTaskRequestForm(prefix="mailing")
+    build_form = build_form or BuildTaskRequestForm(prefix="build")
+
+    patch_selected = set(str(v) for v in (patch_form["branches"].value() or []))
+    mailing_selected = set(str(v) for v in (mailing_form["branches"].value() or []))
+
     tasks = list(
         TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
     )
@@ -849,9 +857,12 @@ def _tasks_board_context(
                 column["tasks"].append(task)
                 break
     return {
-        "patch_form": patch_form or PatchTaskRequestForm(prefix="patch"),
-        "mailing_form": mailing_form or MailingTaskRequestForm(prefix="mailing"),
-        "build_form": build_form or BuildTaskRequestForm(prefix="build"),
+        "patch_form": patch_form,
+        "mailing_form": mailing_form,
+        "build_form": build_form,
+        "branch_options": branch_options,
+        "patch_selected_branch_ids": patch_selected,
+        "mailing_selected_branch_ids": mailing_selected,
         "branch_total": branch_total,
         "kanban_columns": columns,
         "status_choices": TaskRequest.Status.choices,
