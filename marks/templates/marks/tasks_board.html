@@ -174,6 +174,13 @@
               {{ patch_form.notify_me }}
               <label class="form-check-label" for="{{ patch_form.notify_me.id_for_label }}">{{ patch_form.notify_me.label }}</label>
             </div>
+            <div class="notify-username-wrap mt-2 {% if not patch_form.notify_me.value %}d-none{% endif %}">
+              <label class="form-label mb-1" for="{{ patch_form.tg_username.id_for_label }}">{{ patch_form.tg_username.label }}</label>
+              {{ patch_form.tg_username }}
+              {% for error in patch_form.tg_username.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
           </div>
           <div class="col-12">
             <button class="btn btn-primary w-100">Создать</button>
@@ -241,6 +248,13 @@
             <div class="form-check">
               {{ mailing_form.notify_me }}
               <label class="form-check-label" for="{{ mailing_form.notify_me.id_for_label }}">{{ mailing_form.notify_me.label }}</label>
+            </div>
+            <div class="notify-username-wrap mt-2 {% if not mailing_form.notify_me.value %}d-none{% endif %}">
+              <label class="form-label mb-1" for="{{ mailing_form.tg_username.id_for_label }}">{{ mailing_form.tg_username.label }}</label>
+              {{ mailing_form.tg_username }}
+              {% for error in mailing_form.tg_username.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
             </div>
           </div>
           <div class="col-12">
@@ -316,6 +330,13 @@
             <div class="form-check">
               {{ build_form.notify_me }}
               <label class="form-check-label" for="{{ build_form.notify_me.id_for_label }}">{{ build_form.notify_me.label }}</label>
+            </div>
+            <div class="notify-username-wrap mt-2 {% if not build_form.notify_me.value %}d-none{% endif %}">
+              <label class="form-label mb-1" for="{{ build_form.tg_username.id_for_label }}">{{ build_form.tg_username.label }}</label>
+              {{ build_form.tg_username }}
+              {% for error in build_form.tg_username.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
             </div>
           </div>
           <div class="col-12">
@@ -411,6 +432,21 @@
           emptySearch.classList.toggle('d-none', visibleCount > 0 || !query);
         }
       });
+    });
+
+    const notifyCheckboxes = document.querySelectorAll('input[type="checkbox"][name$="-notify_me"]');
+    notifyCheckboxes.forEach(function(checkbox) {
+      const form = checkbox.closest("form");
+      if (!form) return;
+      const usernameWrap = form.querySelector(".notify-username-wrap");
+      if (!usernameWrap) return;
+
+      const updateVisibility = function() {
+        usernameWrap.classList.toggle("d-none", !checkbox.checked);
+      };
+
+      checkbox.addEventListener("change", updateVisibility);
+      updateVisibility();
     });
   })();
 </script>

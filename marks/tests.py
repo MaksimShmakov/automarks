@@ -118,6 +118,27 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(list(task.branches.values_list("id", flat=True)), [self.branch_main.id])
         notify_mock.assert_called_once_with(task)
 
+    @patch("marks.views.notify_new_task")
+    def test_create_task_with_notify_requires_tg_username(self, notify_mock):
+        self.client.force_login(self.admin_user)
+        deadline = timezone.now() + timedelta(days=2)
+        response = self.client.post(
+            reverse("create_patch_task"),
+            {
+                "patch-branches": [self.branch_main.id],
+                "patch-cjm_url": "https://example.com/cjm",
+                "patch-comment": "Комментарий",
+                "patch-deadline": deadline.strftime("%Y-%m-%dT%H:%M"),
+                "patch-notify_me": "on",
+                "patch-tg_username": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Укажите username в Telegram или chat_id.")
+        self.assertFalse(TaskRequest.objects.filter(task_type=TaskRequest.Type.PATCH).exists())
+        notify_mock.assert_not_called()
+
     @patch("marks.views.notify_status_change")
     def test_status_done_sets_completed_at_and_sends_notification(self, notify_mock):
         task = TaskRequest.objects.create(
@@ -146,6 +167,37 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(kwargs["task"], task)
         self.assertEqual(kwargs["old_status"], TaskRequest.Status.UNREAD)
         self.assertEqual(kwargs["changed_by"], self.admin_user)
+
+    @patch("marks.views.notify_done_to_user")
+    @patch("marks.views._get_legacy_task_notify_username", return_value="test_user")
+    @patch("marks.views.notify_status_change")
+    def test_status_done_sends_personal_notification_when_username_exists(
+        self,
+        status_notify_mock,
+        legacy_username_mock,
+        user_notify_mock,
+    ):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.MAILING,
+            tz_url="https://example.com/tz",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("update_task_status", kwargs={"task_id": task.id}),
+            {"status": TaskRequest.Status.DONE},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("tasks_board"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, TaskRequest.Status.DONE)
+
+        status_notify_mock.assert_called_once()
+        legacy_username_mock.assert_called_once_with(task.id)
+        user_notify_mock.assert_called_once_with(task=task, tg_username="test_user")
 
     def test_tasks_board_filters_by_status(self):
         done_task = TaskRequest.objects.create(

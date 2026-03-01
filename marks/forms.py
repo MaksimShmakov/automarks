@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+import re
 
 from .models import (
     Bot,
@@ -164,6 +165,11 @@ class BaseTaskRequestForm(forms.ModelForm):
         required=False,
         label="Хочу получить уведомление",
     )
+    tg_username = forms.CharField(
+        required=False,
+        max_length=64,
+        label="Username в Telegram",
+    )
 
     class Meta:
         model = TaskRequest
@@ -211,12 +217,41 @@ class BaseTaskRequestForm(forms.ModelForm):
             if name == "notify_me":
                 field.widget = forms.CheckboxInput(attrs={"class": "form-check-input"})
                 continue
+            if name == "tg_username":
+                field.widget = forms.TextInput(
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": "@username или chat_id",
+                        "autocomplete": "off",
+                    }
+                )
+                continue
             field.widget.attrs["class"] = "form-control"
             field.widget.attrs["autocomplete"] = "off"
 
     def _set_type(self, obj, task_type):
         obj.task_type = task_type
         return obj
+
+    def clean(self):
+        cleaned = super().clean()
+        notify_me = bool(cleaned.get("notify_me"))
+        tg_username = (cleaned.get("tg_username") or "").strip()
+        if tg_username.startswith("@"):
+            tg_username = tg_username[1:]
+
+        if notify_me and not tg_username:
+            self.add_error("tg_username", "Укажите username в Telegram или chat_id.")
+            return cleaned
+
+        if tg_username:
+            is_username = re.fullmatch(r"[A-Za-z0-9_]{5,32}", tg_username) is not None
+            is_chat_id = re.fullmatch(r"-?\d{5,20}", tg_username) is not None
+            if not is_username and not is_chat_id:
+                self.add_error("tg_username", "Неверный формат. Пример: @my_user или 123456789.")
+
+        cleaned["tg_username"] = tg_username if notify_me else ""
+        return cleaned
 
 
 class PatchTaskRequestForm(BaseTaskRequestForm):

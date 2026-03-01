@@ -40,7 +40,7 @@ from .forms import (
     ExperimentForm,
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
-from .services.telegram import notify_new_task, notify_status_change
+from .services.telegram import notify_new_task, notify_status_change, notify_done_to_user
 
 logger = logging.getLogger(__name__)
 
@@ -855,10 +855,9 @@ def _quote_ident(name):
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def _set_legacy_task_notify_data(task_id, user, wants_notify):
-    username = (getattr(user, "username", "") or "").strip()
-    table_name = TaskRequest._meta.db_table
-
+def _legacy_task_columns(table_name):
+    if connection.vendor != "postgresql":
+        return set()
     try:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -867,19 +866,49 @@ def _set_legacy_task_notify_data(task_id, user, wants_notify):
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = %s
-                  AND column_name IN ('tg_username')
                 """,
                 [table_name],
             )
-            legacy_cols = {row[0] for row in cursor.fetchall()}
+            return {row[0] for row in cursor.fetchall()}
+    except Exception:
+        logger.exception("Failed to read legacy columns for table %s", table_name)
+        return set()
 
-            if "tg_username" in legacy_cols:
-                cursor.execute(
-                    f"UPDATE {_quote_ident(table_name)} SET {_quote_ident('tg_username')} = %s WHERE id = %s",
-                    [username if wants_notify else "", task_id],
-                )
+
+def _set_legacy_task_notify_data(task_id, tg_username, wants_notify):
+    tg_username = (tg_username or "").strip()
+    table_name = TaskRequest._meta.db_table
+
+    try:
+        legacy_cols = _legacy_task_columns(table_name)
+        if "tg_username" not in legacy_cols:
+            return
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {_quote_ident(table_name)} SET {_quote_ident('tg_username')} = %s WHERE id = %s",
+                [tg_username if wants_notify else "", task_id],
+            )
     except Exception:
         logger.exception("Failed to set legacy notify data (task_id=%s)", task_id)
+
+
+def _get_legacy_task_notify_username(task_id):
+    table_name = TaskRequest._meta.db_table
+    try:
+        legacy_cols = _legacy_task_columns(table_name)
+        if "tg_username" not in legacy_cols:
+            return ""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COALESCE({_quote_ident('tg_username')}, '') FROM {_quote_ident(table_name)} WHERE id = %s",
+                [task_id],
+            )
+            row = cursor.fetchone()
+            return (row[0] or "").strip() if row else ""
+    except Exception:
+        logger.exception("Failed to read legacy notify username (task_id=%s)", task_id)
+        return ""
 
 
 def _tasks_board_context(
@@ -1100,7 +1129,12 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
             if hasattr(form, "save_m2m"):
                 form.save_m2m()
             wants_notify = bool(form.cleaned_data.get("notify_me"))
-            _set_legacy_task_notify_data(task_id=task.id, user=request.user, wants_notify=wants_notify)
+            tg_username = form.cleaned_data.get("tg_username") or ""
+            _set_legacy_task_notify_data(
+                task_id=task.id,
+                tg_username=tg_username,
+                wants_notify=wants_notify,
+            )
     except Exception:
         logger.exception(
             "Failed to create task request (form=%s, user_id=%s)",
@@ -1191,12 +1225,27 @@ def update_task_status(request, task_id):
             notify_ok, notify_error = notify_result
         else:
             notify_ok, notify_error = bool(notify_result), ""
+        user_notify_ok, user_notify_error = True, ""
+        if task.status == TaskRequest.Status.DONE:
+            tg_username = _get_legacy_task_notify_username(task.id)
+            if tg_username:
+                user_notify_result = notify_done_to_user(task=task, tg_username=tg_username)
+                if isinstance(user_notify_result, tuple):
+                    user_notify_ok, user_notify_error = user_notify_result
+                else:
+                    user_notify_ok, user_notify_error = bool(user_notify_result), ""
         messages.success(request, "Статус задачи обновлён.")
         if not notify_ok:
             messages.warning(
                 request,
                 "Статус обновлён, но уведомление в Telegram не отправлено. "
                 + (notify_error or "Проверьте token/chat_id и перезапуск сервиса."),
+            )
+        if not user_notify_ok:
+            messages.warning(
+                request,
+                "Задача отмечена как выполненная, но персональное уведомление не отправлено. "
+                + (user_notify_error or "Проверьте username/chat_id в заявке."),
             )
     else:
         messages.info(request, "Статус не изменился.")

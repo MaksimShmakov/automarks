@@ -126,6 +126,17 @@ def _send_message(chat_id, text):
         return False, "Неизвестная ошибка отправки в Telegram"
 
 
+def _normalize_direct_chat(value):
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("@"):
+        return raw
+    if raw.lstrip("-").isdigit():
+        return raw
+    return f"@{raw}"
+
+
 def notify_new_task(task):
     chat_id = getattr(settings, "TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
     platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
@@ -152,3 +163,35 @@ def notify_status_change(task, old_status, changed_by):
         f"{details}"
     )
     return _send_message(chat_id=chat_id, text=text)
+
+
+def notify_done_to_user(task, tg_username):
+    raw_target = (tg_username or "").strip()
+    direct_chat_id = _normalize_direct_chat(raw_target)
+    if not direct_chat_id:
+        return False, "Не указан username/chat_id для персонального уведомления."
+
+    mention = raw_target if raw_target.startswith("@") else f"@{raw_target}"
+    platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
+    header = f"[{_safe(platform_name)}] Задача выполнена" if platform_name else "Задача выполнена"
+    text = (
+        f"{header}\n\n"
+        f"Получатель: {_safe(mention)}\n"
+        f"Ваша задача #{task.id} переведена в статус: {_safe(task.get_status_display())}\n"
+        f"Тип: {_safe(task.get_task_type_display())}\n"
+        f"Дедлайн: {_format_deadline(task.deadline)}\n"
+        f"Бот и ветки: {_format_branches(task)}"
+    )
+    ok, error = _send_message(chat_id=direct_chat_id, text=text)
+    if ok:
+        return True, ""
+
+    # Usernames are usually not valid chat_id for direct bot messages.
+    # Fallback: notify in status chat with @mention.
+    status_chat_id = getattr(settings, "TELEGRAM_NOTIFY_STATUS_CHAT_ID", "")
+    if raw_target.lstrip("-").isdigit() or not status_chat_id:
+        return False, error
+    fallback_ok, fallback_error = _send_message(chat_id=status_chat_id, text=text)
+    if fallback_ok:
+        return True, ""
+    return False, fallback_error or error
