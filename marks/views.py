@@ -9,7 +9,7 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import login
 from django.urls import reverse
 from datetime import datetime, timedelta
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import Sum, Count
 from django.utils import timezone
 from decimal import Decimal
@@ -851,6 +851,37 @@ def _build_task_filter_query(filters):
     return urlencode(params)
 
 
+def _quote_ident(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _set_legacy_task_notify_data(task_id, user, wants_notify):
+    username = (getattr(user, "username", "") or "").strip()
+    table_name = TaskRequest._meta.db_table
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                  AND column_name IN ('tg_username')
+                """,
+                [table_name],
+            )
+            legacy_cols = {row[0] for row in cursor.fetchall()}
+
+            if "tg_username" in legacy_cols:
+                cursor.execute(
+                    f"UPDATE {_quote_ident(table_name)} SET {_quote_ident('tg_username')} = %s WHERE id = %s",
+                    [username if wants_notify else "", task_id],
+                )
+    except Exception:
+        logger.exception("Failed to set legacy notify data (task_id=%s)", task_id)
+
+
 def _tasks_board_context(
     patch_form=None,
     mailing_form=None,
@@ -1068,6 +1099,8 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
             task.save()
             if hasattr(form, "save_m2m"):
                 form.save_m2m()
+            wants_notify = bool(form.cleaned_data.get("notify_me"))
+            _set_legacy_task_notify_data(task_id=task.id, user=request.user, wants_notify=wants_notify)
     except Exception:
         logger.exception(
             "Failed to create task request (form=%s, user_id=%s)",

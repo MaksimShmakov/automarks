@@ -160,6 +160,11 @@ class TagImportForm(forms.Form):
 
 
 class BaseTaskRequestForm(forms.ModelForm):
+    notify_me = forms.BooleanField(
+        required=False,
+        label="Хочу получить уведомление",
+    )
+
     class Meta:
         model = TaskRequest
         fields = []
@@ -202,6 +207,9 @@ class BaseTaskRequestForm(forms.ModelForm):
                         "data-lpignore": "true",
                     }
                 )
+                continue
+            if name == "notify_me":
+                field.widget = forms.CheckboxInput(attrs={"class": "form-check-input"})
                 continue
             field.widget.attrs["class"] = "form-control"
             field.widget.attrs["autocomplete"] = "off"
