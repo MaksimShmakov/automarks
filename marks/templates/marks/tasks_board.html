@@ -18,11 +18,101 @@
   .branch-option label {
     color: #212529;
   }
+  .counter-card .counter-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<h2 class="mb-3">Задачи</h2>
+<h2 class="mb-3">Задачник</h2>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light"><b>Фильтры и отчет</b></div>
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-6 col-xl-2">
+        <label class="form-label">Тип задачи</label>
+        <select name="task_type" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for value, label in task_type_choices %}
+            <option value="{{ value }}" {% if filter_values.task_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-xl-2">
+        <label class="form-label">Статус</label>
+        <select name="task_status" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for value, label in status_filter_choices %}
+            <option value="{{ value }}" {% if filter_values.task_status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-xl-2">
+        <label class="form-label">Бот</label>
+        <select name="bot_id" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for bot in bot_filter_options %}
+            <option value="{{ bot.id }}" {% if filter_values.bot_id == bot.id|stringformat:"s" %}selected{% endif %}>{{ bot.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-xl-2">
+        <label class="form-label">Выполнено с</label>
+        <input type="date" name="completed_from" value="{{ filter_values.completed_from_raw }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-12 col-md-6 col-xl-2">
+        <label class="form-label">Выполнено по</label>
+        <input type="date" name="completed_to" value="{{ filter_values.completed_to_raw }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-12 col-md-6 col-xl-2 d-grid">
+        <button class="btn btn-primary btn-sm">Применить</button>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 d-grid">
+        <a href="{% url 'tasks_board' %}" class="btn btn-outline-secondary btn-sm">Сбросить фильтры</a>
+      </div>
+      {% if show_kanban %}
+      <div class="col-12 col-md-6 col-xl-5 d-grid">
+        <a
+          href="{% url 'export_completed_tasks' %}{% if current_filter_query %}?{{ current_filter_query }}{% endif %}"
+          class="btn btn-success btn-sm"
+        >
+          Выгрузить выполненные за период ({{ completed_tasks_count }})
+        </a>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card shadow-sm counter-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Выполненные сборки</div>
+        <div class="counter-value">{{ completed_type_counters.build }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card shadow-sm counter-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Выполненные рассылки</div>
+        <div class="counter-value">{{ completed_type_counters.mailing }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card shadow-sm counter-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Выполненные правки</div>
+        <div class="counter-value">{{ completed_type_counters.patch }}</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="row g-3 mb-4">
   <div class="col-12 col-lg-4">
@@ -34,13 +124,7 @@
           <div class="col-12">
             <label class="form-label">{{ patch_form.branches.label }}</label>
             <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
-            <input
-              type="text"
-              class="form-control form-control-sm mb-2 branch-search"
-              data-target="patch-branch-list"
-              placeholder="Поиск по боту или ветке..."
-              autocomplete="off"
-            >
+            <input type="text" class="form-control form-control-sm mb-2 branch-search" data-target="patch-branch-list" placeholder="Поиск по боту или ветке..." autocomplete="off">
             <div class="task-branches" id="patch-branch-list">
               {% for branch in branch_options %}
                 <div class="form-check branch-option">
@@ -61,9 +145,6 @@
               {% endfor %}
             </div>
             <div class="small text-muted mt-1 d-none branch-empty-search">Ничего не найдено.</div>
-            {% if patch_form.branches.help_text %}
-              <div class="form-text">{{ patch_form.branches.help_text }}</div>
-            {% endif %}
             {% for error in patch_form.branches.errors %}
               <div class="invalid-feedback d-block">{{ error }}</div>
             {% endfor %}
@@ -103,13 +184,7 @@
           <div class="col-12">
             <label class="form-label">{{ mailing_form.branches.label }}</label>
             <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
-            <input
-              type="text"
-              class="form-control form-control-sm mb-2 branch-search"
-              data-target="mailing-branch-list"
-              placeholder="Поиск по боту или ветке..."
-              autocomplete="off"
-            >
+            <input type="text" class="form-control form-control-sm mb-2 branch-search" data-target="mailing-branch-list" placeholder="Поиск по боту или ветке..." autocomplete="off">
             <div class="task-branches" id="mailing-branch-list">
               {% for branch in branch_options %}
                 <div class="form-check branch-option">
@@ -130,9 +205,6 @@
               {% endfor %}
             </div>
             <div class="small text-muted mt-1 d-none branch-empty-search">Ничего не найдено.</div>
-            {% if mailing_form.branches.help_text %}
-              <div class="form-text">{{ mailing_form.branches.help_text }}</div>
-            {% endif %}
             {% for error in mailing_form.branches.errors %}
               <div class="invalid-feedback d-block">{{ error }}</div>
             {% endfor %}
@@ -170,9 +242,30 @@
         <form method="post" action="{% url 'create_build_task' %}" class="row g-3">
           {% csrf_token %}
           <div class="col-12">
-            <label class="form-label">{{ build_form.build_name.label }}</label>
-            {{ build_form.build_name }}
-            {% for error in build_form.build_name.errors %}
+            <label class="form-label">{{ build_form.branches.label }}</label>
+            <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
+            <input type="text" class="form-control form-control-sm mb-2 branch-search" data-target="build-branch-list" placeholder="Поиск по боту или ветке..." autocomplete="off">
+            <div class="task-branches" id="build-branch-list">
+              {% for branch in branch_options %}
+                <div class="form-check branch-option">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="{{ build_form.branches.html_name }}"
+                    id="id_{{ build_form.prefix }}-branches-{{ branch.id }}"
+                    value="{{ branch.id }}"
+                    {% if branch.id|stringformat:"s" in build_selected_branch_ids %}checked{% endif %}
+                  >
+                  <label class="form-check-label" for="id_{{ build_form.prefix }}-branches-{{ branch.id }}">
+                    {{ branch.bot.name }} / {{ branch.name }} ({{ branch.code }})
+                  </label>
+                </div>
+              {% empty %}
+                <div class="text-muted small">Нет доступных веток.</div>
+              {% endfor %}
+            </div>
+            <div class="small text-muted mt-1 d-none branch-empty-search">Ничего не найдено.</div>
+            {% for error in build_form.branches.errors %}
               <div class="invalid-feedback d-block">{{ error }}</div>
             {% endfor %}
           </div>
@@ -210,6 +303,7 @@
   </div>
 </div>
 
+{% if show_kanban %}
 <div class="row g-3">
   {% for column in kanban_columns %}
     <div class="col-12 col-lg-4">
@@ -232,24 +326,15 @@
                 <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|date:"d.m.Y H:i" }}</div>
                 <div class="small text-muted mb-2">Окончание: {% if task.completed_at %}{{ task.completed_at|date:"d.m.Y H:i" }}{% else %}-{% endif %}</div>
 
-                {% with branches=task.branches.all %}
-                  {% if branches %}
-                    <div class="mb-2">
-                      {% for branch in branches %}
-                        <span class="badge rounded-pill text-bg-light border">{{ branch }}</span>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                {% endwith %}
-
-                {% if task.task_type == 'patch' %}
+                <div class="small mb-1"><b>Бот и ветки:</b> {{ task.get_bot_branch_text }}</div>
+                {% if task.task_type == 'patch' or task.task_type == 'build' %}
                   <div class="small mb-1"><b>CJM:</b> <a href="{{ task.cjm_url }}" target="_blank" rel="noopener">{{ task.cjm_url }}</a></div>
-                {% elif task.task_type == 'mailing' %}
+                {% endif %}
+                {% if task.task_type == 'mailing' %}
                   <div class="small mb-1"><b>ТЗ:</b> <a href="{{ task.tz_url }}" target="_blank" rel="noopener">{{ task.tz_url }}</a></div>
-                {% elif task.task_type == 'build' %}
-                  <div class="small mb-1"><b>Бот и ветки:</b> {{ task.build_name }}</div>
+                {% endif %}
+                {% if task.task_type == 'build' %}
                   <div class="small mb-1"><b>Токен:</b> <span class="text-break">{{ task.build_token }}</span></div>
-                  <div class="small mb-1"><b>CJM:</b> <a href="{{ task.cjm_url }}" target="_blank" rel="noopener">{{ task.cjm_url }}</a></div>
                 {% endif %}
 
                 {% if task.comment %}
@@ -275,6 +360,11 @@
     </div>
   {% endfor %}
 </div>
+{% else %}
+<div class="alert alert-info">
+  Канбан в задачнике доступен только администраторам.
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}

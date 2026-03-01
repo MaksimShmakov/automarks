@@ -27,15 +27,9 @@
     <div class="collapse navbar-collapse" id="navbarMain">
       <ul class="navbar-nav me-auto">
         {% if user.is_authenticated %}
-          {% if user.is_superuser or user.profile.role in 'admin,manager' or user|has_any_group:'Администратор,Маркетолог' %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'products_list' %}">Продукты</a></li>
-          {% endif %}
-          {% if user.is_superuser or user.profile.role in 'admin,bot_user' or user|has_any_group:'Администратор,Bot Operators' %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'bots_list' %}">Боты</a></li>
-          {% endif %}
-          {% if user.is_superuser or user.profile.role == 'admin' or user|has_group:'Администратор' %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'tasks_board' %}">Задачи</a></li>
-          {% endif %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'bots_list' %}">Боты</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'tasks_board' %}">Задачи</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'experiments_board' %}">Эксперименты</a></li>
         {% endif %}
       </ul>
       <ul class="navbar-nav ms-auto">

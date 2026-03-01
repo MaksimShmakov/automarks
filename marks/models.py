@@ -183,6 +183,101 @@ class TaskRequest(models.Model):
             self.completed_at = None
         super().save(*args, **kwargs)
 
+    @staticmethod
+    def _bot_branch_label(branch):
+        bot_name = (getattr(getattr(branch, "bot", None), "name", "") or "").strip()
+        branch_name = (getattr(branch, "name", "") or "").strip()
+        if not bot_name:
+            return ""
+        if not branch_name or branch_name.lower() == "main":
+            return bot_name
+        normalized_branch = "_".join(branch_name.split())
+        return f"{bot_name}_{normalized_branch}"
+
+    def get_bot_branch_labels(self):
+        labels = []
+        seen = set()
+        for branch in self.branches.select_related("bot").all():
+            label = self._bot_branch_label(branch)
+            if label and label not in seen:
+                labels.append(label)
+                seen.add(label)
+        if labels:
+            return labels
+
+        raw = (self.build_name or "").strip()
+        if not raw:
+            return []
+        fallback = []
+        for part in raw.split(","):
+            value = part.strip()
+            if value and value not in seen:
+                fallback.append(value)
+                seen.add(value)
+        return fallback
+
+    def get_bot_branch_text(self):
+        labels = self.get_bot_branch_labels()
+        if not labels:
+            return "-"
+        return ", ".join(labels)
+
+    def get_scope_units(self):
+        if self.task_type not in {self.Type.PATCH, self.Type.MAILING, self.Type.BUILD}:
+            return 0
+        labels = self.get_bot_branch_labels()
+        if labels:
+            return len(labels)
+        return 1
+
+
+class Experiment(models.Model):
+    class Status(models.TextChoices):
+        BACKLOG = "backlog", "Backlog"
+        DRAFT = "draft", "Draft"
+        IN_PROGRESS = "in_progress", "В процессе"
+        COMPLETED = "completed", "Завершен"
+        SUCCESS = "success", "Успех"
+        FAILED = "failed", "Провал"
+        RETEST = "retest", "Нужен ретест"
+
+    class TrafficVolume(models.TextChoices):
+        SPLIT_50_50 = "50_50", "50/50"
+        SPLIT_70_30 = "70_30", "70/30"
+        PART_OF_BASE = "part_of_base", "Только часть базы"
+        OTHER = "other", "Другое"
+
+    class TestDuration(models.TextChoices):
+        DAYS_3 = "3_days", "3 дня"
+        DAYS_7 = "7_days", "7 дней"
+        UNTIL_USERS = "until_users", "До набора X пользователей"
+        END_DATE = "end_date", "Конкретная дата окончания"
+
+    title = models.CharField(max_length=255, blank=True, default="")
+    wants_ab_test = models.BooleanField(default=False)
+    ab_test_options = models.JSONField(blank=True, default=list)
+    ab_test_custom_option = models.CharField(max_length=255, blank=True, default="")
+    metric_impact = models.CharField(max_length=255, blank=True, default="")
+    expected_change = models.CharField(max_length=255, blank=True, default="")
+    hypothesis = models.TextField(blank=True, default="")
+    traffic_volume = models.CharField(max_length=20, choices=TrafficVolume.choices, blank=True, default="")
+    traffic_volume_other = models.CharField(max_length=255, blank=True, default="")
+    test_duration = models.CharField(max_length=20, choices=TestDuration.choices, blank=True, default="")
+    duration_users = models.PositiveIntegerField(null=True, blank=True)
+    duration_end_date = models.DateField(null=True, blank=True)
+    comment = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.BACKLOG)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        name = self.title or f"Эксперимент #{self.id}"
+        return f"{name} ({self.get_status_display()})"
+
 
 class Tag(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="tags")

@@ -46,10 +46,7 @@ def _mask_token(value):
 
 
 def _format_branches(task):
-    branches = list(task.branches.select_related("bot").all())
-    if not branches:
-        return "-"
-    return ", ".join(_safe(str(branch)) for branch in branches)
+    return _safe(task.get_bot_branch_text())
 
 
 def _build_task_details(task):
@@ -70,7 +67,7 @@ def _build_task_details(task):
     elif task.task_type == TaskRequest.Type.BUILD:
         lines.extend(
             [
-                f"Бот и ветки: {_safe(task.build_name or '-')}",
+                f"Бот и ветки: {_safe(task.get_bot_branch_text())}",
                 f"Токен: {_safe(_mask_token(task.build_token))}",
                 f"CJM: {_safe(task.cjm_url or '-')}",
             ]

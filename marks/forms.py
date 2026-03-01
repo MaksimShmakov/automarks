@@ -6,6 +6,7 @@ from .models import (
     Bot,
     Branch,
     BranchPlanMonthly,
+    Experiment,
     Funnel,
     PatchNote,
     PlanMonthly,
@@ -250,9 +251,9 @@ class MailingTaskRequestForm(BaseTaskRequestForm):
 class BuildTaskRequestForm(BaseTaskRequestForm):
     class Meta:
         model = TaskRequest
-        fields = ["build_name", "build_token", "cjm_url", "comment", "deadline"]
+        fields = ["branches", "build_token", "cjm_url", "comment", "deadline"]
         labels = {
-            "build_name": "Название бота и веток",
+            "branches": "Бот и ветки",
             "build_token": "Токен",
             "cjm_url": "CJM (ссылка)",
             "comment": "Комментарий",
@@ -261,15 +262,25 @@ class BuildTaskRequestForm(BaseTaskRequestForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["build_name"].required = True
+        self.fields["branches"].required = True
         self.fields["build_token"].required = True
         self.fields["cjm_url"].required = True
 
     def save(self, commit=True):
         obj = super().save(commit=False)
         self._set_type(obj, TaskRequest.Type.BUILD)
+        selected_branches = self.cleaned_data.get("branches") or []
+        labels = []
+        seen = set()
+        for branch in selected_branches:
+            label = TaskRequest._bot_branch_label(branch)
+            if label and label not in seen:
+                labels.append(label)
+                seen.add(label)
+        obj.build_name = ", ".join(labels)
         if commit:
             obj.save()
+            self.save_m2m()
         return obj
 
 
@@ -279,3 +290,119 @@ class TaskStatusForm(forms.ModelForm):
         fields = ["status"]
         labels = {"status": "Статус"}
         widgets = {"status": forms.Select(attrs={"class": "form-select form-select-sm"})}
+
+
+class ExperimentForm(forms.ModelForm):
+    AB_TEST_OPTIONS = [
+        ("start", "Стартовый"),
+        ("segmentation", "Сегментация"),
+        ("number", "Номер"),
+        ("subscription", "Подписка"),
+        ("push", "Дожимы"),
+        ("sale", "Продажа"),
+        ("custom", "Свой вариант"),
+    ]
+
+    ab_test_options = forms.MultipleChoiceField(
+        choices=AB_TEST_OPTIONS,
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
+        label="Варианты",
+    )
+
+    class Meta:
+        model = Experiment
+        fields = [
+            "title",
+            "wants_ab_test",
+            "ab_test_options",
+            "ab_test_custom_option",
+            "metric_impact",
+            "expected_change",
+            "hypothesis",
+            "traffic_volume",
+            "traffic_volume_other",
+            "test_duration",
+            "duration_users",
+            "duration_end_date",
+            "comment",
+            "status",
+        ]
+        labels = {
+            "title": "Название эксперимента",
+            "wants_ab_test": "Хочу АБ тест",
+            "ab_test_custom_option": "Свой вариант",
+            "metric_impact": "На какую метрику влияем",
+            "expected_change": "Какое изменение ожидаем",
+            "hypothesis": "Гипотеза",
+            "traffic_volume": "Объем трафика",
+            "traffic_volume_other": "Другое (объем трафика)",
+            "test_duration": "Длительность теста",
+            "duration_users": "До набора X пользователей",
+            "duration_end_date": "Конкретная дата окончания",
+            "comment": "Комментарий",
+            "status": "Статус",
+        }
+        widgets = {
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "ab_test_custom_option": forms.TextInput(attrs={"class": "form-control"}),
+            "metric_impact": forms.TextInput(attrs={"class": "form-control"}),
+            "expected_change": forms.TextInput(attrs={"class": "form-control"}),
+            "hypothesis": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "traffic_volume": forms.Select(attrs={"class": "form-select"}),
+            "traffic_volume_other": forms.TextInput(attrs={"class": "form-control"}),
+            "test_duration": forms.Select(attrs={"class": "form-select"}),
+            "duration_users": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "duration_end_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "comment": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "status": forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["wants_ab_test"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        wants_ab_test = bool(cleaned.get("wants_ab_test"))
+        ab_options = cleaned.get("ab_test_options") or []
+
+        if not wants_ab_test:
+            cleaned["ab_test_options"] = []
+            cleaned["ab_test_custom_option"] = ""
+            cleaned["metric_impact"] = ""
+            cleaned["expected_change"] = ""
+            cleaned["hypothesis"] = ""
+            cleaned["traffic_volume"] = ""
+            cleaned["traffic_volume_other"] = ""
+            cleaned["test_duration"] = ""
+            cleaned["duration_users"] = None
+            cleaned["duration_end_date"] = None
+            return cleaned
+
+        if not ab_options:
+            self.add_error("ab_test_options", "Выберите минимум один вариант для АБ теста.")
+        if "custom" in ab_options and not (cleaned.get("ab_test_custom_option") or "").strip():
+            self.add_error("ab_test_custom_option", "Заполните поле 'Свой вариант'.")
+        if not (cleaned.get("metric_impact") or "").strip():
+            self.add_error("metric_impact", "Заполните поле метрики.")
+        if not (cleaned.get("expected_change") or "").strip():
+            self.add_error("expected_change", "Заполните ожидаемое изменение.")
+        if not (cleaned.get("hypothesis") or "").strip():
+            self.add_error("hypothesis", "Заполните гипотезу.")
+
+        traffic_volume = cleaned.get("traffic_volume")
+        if not traffic_volume:
+            self.add_error("traffic_volume", "Выберите объем трафика.")
+        elif traffic_volume == Experiment.TrafficVolume.OTHER and not (cleaned.get("traffic_volume_other") or "").strip():
+            self.add_error("traffic_volume_other", "Укажите свой вариант объема трафика.")
+
+        duration = cleaned.get("test_duration")
+        if not duration:
+            self.add_error("test_duration", "Выберите длительность теста.")
+        elif duration == Experiment.TestDuration.UNTIL_USERS and not cleaned.get("duration_users"):
+            self.add_error("duration_users", "Укажите количество пользователей.")
+        elif duration == Experiment.TestDuration.END_DATE and not cleaned.get("duration_end_date"):
+            self.add_error("duration_end_date", "Укажите дату окончания.")
+
+        return cleaned

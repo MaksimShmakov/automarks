@@ -10,6 +10,7 @@ from .models import (
     PatchNote,
     UserProfile,
     TaskRequest,
+    Experiment,
 )
 
 
@@ -80,3 +81,10 @@ class TaskRequestAdmin(admin.ModelAdmin):
     list_filter = ("task_type", "status", "deadline")
     search_fields = ("comment", "build_name", "cjm_url", "tz_url", "created_by__username")
     filter_horizontal = ("branches",)
+
+
+@admin.register(Experiment)
+class ExperimentAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "status", "wants_ab_test", "created_by", "created_at", "updated_at")
+    list_filter = ("status", "wants_ab_test", "traffic_volume", "test_duration")
+    search_fields = ("title", "metric_impact", "expected_change", "hypothesis", "comment")

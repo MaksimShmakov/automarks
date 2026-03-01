@@ -11,17 +11,19 @@ from django.urls import reverse
 from datetime import datetime, timedelta
 from django.db import transaction
 from django.db.models import Sum, Count
+from django.utils import timezone
 from decimal import Decimal
 import json
 import csv
 import io
+from urllib.parse import urlencode
 import openpyxl
 from openpyxl.styles import Font, Alignment
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 
-from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest
+from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest, Experiment
 from .forms import (
     BotForm,
     BotStatusForm,
@@ -34,6 +36,7 @@ from .forms import (
     MailingTaskRequestForm,
     BuildTaskRequestForm,
     TaskStatusForm,
+    ExperimentForm,
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import notify_new_task, notify_status_change
@@ -50,14 +53,6 @@ def get_user_role(user):
 
 
 def get_role_home_view_name(user):
-    role = get_user_role(user)
-    if role == UserProfile.Role.BOT_USER:
-        return "bots_list"
-    try:
-        if user.is_authenticated and user.groups.filter(name=BOT_OPERATORS_GROUP).exists():
-            return "bots_list"
-    except Exception:
-        pass
     return "dashboard"
 
 def _active_tags_qs(tags_qs):
@@ -86,31 +81,14 @@ class RoleAwareLoginView(LoginView):
         return reverse(get_role_home_view_name(self.request.user))
 
 
-def is_admin(user):
+def user_is_admin(user):
     role = get_user_role(user)
-    return bool(user.is_superuser or role == "admin")
-
-
-def is_marketer(user):
-    role = get_user_role(user)
-    return role in {"manager", "marketer", "admin"}
-
-
-def is_analyst(user):
-    role = get_user_role(user)
-    return role == "analyst"
-
-
-def is_admin(user):
-    return user.is_superuser or user.groups.filter(name="Администратор").exists()
-
-
-def is_marketer(user):
-    return user.groups.filter(name="Маркетолог").exists() or is_admin(user)
-
-
-def is_analyst(user):
-    return user.groups.filter(name="Аналитик").exists()
+    if user.is_superuser or role == UserProfile.Role.ADMIN:
+        return True
+    try:
+        return user.groups.filter(name="Администратор").exists()
+    except Exception:
+        return False
 
 
 @login_required
@@ -225,25 +203,15 @@ def _get_dashboard_data(month, year):
 
 
 @login_required
-@require_roles('admin', 'manager', 'marketer', 'analyst')
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def dashboard(request):
-    selected_month = request.GET.get("month")
-    selected_year = request.GET.get("year")
-    now = datetime.now()
-    month = int(selected_month) if selected_month else now.month
-    year = int(selected_year) if selected_year else now.year
-    dashboard_data = _get_dashboard_data(month, year)
-    months = [(i, name) for i, name in enumerate(
-        ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабр"], 1)]
-    years = range(now.year - 3, now.year + 2)
-    return render(request, "marks/dashboard.html", {
-        "dashboard_data": dashboard_data,
-        "months": months,
-        "years": years,
-        "selected_month": month,
-        "selected_year": year,
-    })
+    return render(
+        request,
+        "marks/dashboard.html",
+        {
+            "is_admin_user": user_is_admin(request.user),
+        },
+    )
 
 
 @login_required
@@ -458,7 +426,7 @@ def bot_api(request, bot_name):
 
 
 @login_required
-@require_roles('admin', UserProfile.Role.BOT_USER)
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def bots_list(request):
     bots = Bot.objects.all().annotate(branches_total=Count("branches"))
     active_bots = bots.filter(is_active=True).order_by("name", "created_at")
@@ -811,10 +779,82 @@ def product_reports(request, product_id):
     return render(request, "marks/product_reports.html", {"product": product, "plans": plans, "reports": reports})
 
 
+def _parse_filter_date(value):
+    value = (value or "").strip()
+    if not value:
+        return None, ""
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+        return parsed, value
+    except ValueError:
+        return None, ""
+
+
+def _get_task_filter_values(request):
+    task_type = (request.GET.get("task_type") or "").strip()
+    task_status = (request.GET.get("task_status") or "").strip()
+    bot_id = (request.GET.get("bot_id") or "").strip()
+    completed_from, completed_from_raw = _parse_filter_date(request.GET.get("completed_from"))
+    completed_to, completed_to_raw = _parse_filter_date(request.GET.get("completed_to"))
+
+    if task_type not in TaskRequest.Type.values:
+        task_type = ""
+    if task_status not in TaskRequest.Status.values:
+        task_status = ""
+    if not bot_id.isdigit():
+        bot_id = ""
+
+    if completed_from and completed_to and completed_from > completed_to:
+        completed_from, completed_to = completed_to, completed_from
+        completed_from_raw, completed_to_raw = completed_to_raw, completed_from_raw
+
+    return {
+        "task_type": task_type,
+        "task_status": task_status,
+        "bot_id": bot_id,
+        "completed_from": completed_from,
+        "completed_to": completed_to,
+        "completed_from_raw": completed_from_raw,
+        "completed_to_raw": completed_to_raw,
+    }
+
+
+def _apply_task_filters(tasks_qs, filters):
+    if filters["task_type"]:
+        tasks_qs = tasks_qs.filter(task_type=filters["task_type"])
+    if filters["task_status"]:
+        tasks_qs = tasks_qs.filter(status=filters["task_status"])
+    if filters["bot_id"]:
+        tasks_qs = tasks_qs.filter(branches__bot_id=int(filters["bot_id"]))
+    if filters["completed_from"]:
+        tasks_qs = tasks_qs.filter(completed_at__date__gte=filters["completed_from"])
+    if filters["completed_to"]:
+        tasks_qs = tasks_qs.filter(completed_at__date__lte=filters["completed_to"])
+    return tasks_qs.distinct()
+
+
+def _build_task_filter_query(filters):
+    params = {}
+    if filters.get("task_type"):
+        params["task_type"] = filters["task_type"]
+    if filters.get("task_status"):
+        params["task_status"] = filters["task_status"]
+    if filters.get("bot_id"):
+        params["bot_id"] = filters["bot_id"]
+    if filters.get("completed_from_raw"):
+        params["completed_from"] = filters["completed_from_raw"]
+    if filters.get("completed_to_raw"):
+        params["completed_to"] = filters["completed_to_raw"]
+    return urlencode(params)
+
+
 def _tasks_board_context(
     patch_form=None,
     mailing_form=None,
     build_form=None,
+    tasks=None,
+    filter_values=None,
+    current_user=None,
 ):
     branch_options = list(Branch.objects.select_related("bot").order_by("bot__name", "name"))
     branch_total = len(branch_options)
@@ -824,10 +864,34 @@ def _tasks_board_context(
 
     patch_selected = set(str(v) for v in (patch_form["branches"].value() or []))
     mailing_selected = set(str(v) for v in (mailing_form["branches"].value() or []))
+    build_selected = set(str(v) for v in (build_form["branches"].value() or []))
 
-    tasks = list(
-        TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
-    )
+    if tasks is None:
+        tasks = list(
+            TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
+        )
+    else:
+        tasks = list(tasks)
+
+    filter_values = filter_values or {
+        "task_type": "",
+        "task_status": "",
+        "bot_id": "",
+        "completed_from": None,
+        "completed_to": None,
+        "completed_from_raw": "",
+        "completed_to_raw": "",
+    }
+
+    bot_filter_options = list(Bot.objects.filter(branches__isnull=False).distinct().order_by("name"))
+    completed_tasks_count = sum(1 for task in tasks if task.status == TaskRequest.Status.DONE and task.completed_at)
+    done_tasks = [task for task in tasks if task.status == TaskRequest.Status.DONE and task.completed_at]
+    completed_type_counters = {
+        "build": sum(task.get_scope_units() for task in done_tasks if task.task_type == TaskRequest.Type.BUILD),
+        "mailing": sum(task.get_scope_units() for task in done_tasks if task.task_type == TaskRequest.Type.MAILING),
+        "patch": sum(task.get_scope_units() for task in done_tasks if task.task_type == TaskRequest.Type.PATCH),
+    }
+
     columns = [
         {
             "status": TaskRequest.Status.UNREAD,
@@ -863,16 +927,95 @@ def _tasks_board_context(
         "branch_options": branch_options,
         "patch_selected_branch_ids": patch_selected,
         "mailing_selected_branch_ids": mailing_selected,
+        "build_selected_branch_ids": build_selected,
         "branch_total": branch_total,
+        "task_type_choices": TaskRequest.Type.choices,
+        "status_filter_choices": TaskRequest.Status.choices,
+        "bot_filter_options": bot_filter_options,
+        "filter_values": filter_values,
+        "current_filter_query": _build_task_filter_query(filter_values),
+        "completed_tasks_count": completed_tasks_count,
+        "completed_type_counters": completed_type_counters,
         "kanban_columns": columns,
         "status_choices": TaskRequest.Status.choices,
+        "show_kanban": user_is_admin(current_user) if current_user else False,
     }
 
 
 @login_required
-@require_roles(UserProfile.Role.ADMIN)
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def tasks_board(request):
-    return render(request, "marks/tasks_board.html", _tasks_board_context())
+    filter_values = _get_task_filter_values(request)
+    tasks_qs = TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-created_at")
+    filtered_tasks = _apply_task_filters(tasks_qs, filter_values)
+    return render(
+        request,
+        "marks/tasks_board.html",
+        _tasks_board_context(tasks=filtered_tasks, filter_values=filter_values, current_user=request.user),
+    )
+
+
+@login_required
+@require_roles(UserProfile.Role.ADMIN)
+def export_completed_tasks(request):
+    filter_values = _get_task_filter_values(request)
+    tasks_qs = TaskRequest.objects.select_related("created_by").prefetch_related("branches__bot").order_by("-completed_at")
+    tasks_qs = _apply_task_filters(tasks_qs, filter_values).filter(
+        status=TaskRequest.Status.DONE,
+        completed_at__isnull=False,
+    )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Выполненные задачи"
+    ws.append([
+        "ID",
+        "Тип",
+        "Статус",
+        "Создал",
+        "Создано",
+        "Дедлайн",
+        "Завершено",
+        "Комментарий",
+        "CJM/ТЗ",
+        "Бот и ветки",
+    ])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    for task in tasks_qs:
+        links = [value for value in [task.cjm_url, task.tz_url] if value]
+        ws.append([
+            task.id,
+            task.get_task_type_display(),
+            task.get_status_display(),
+            task.created_by.username if task.created_by else "-",
+            timezone.localtime(task.created_at).strftime("%d.%m.%Y %H:%M") if task.created_at else "-",
+            timezone.localtime(task.deadline).strftime("%d.%m.%Y %H:%M") if task.deadline else "-",
+            timezone.localtime(task.completed_at).strftime("%d.%m.%Y %H:%M") if task.completed_at else "-",
+            task.comment or "",
+            " | ".join(links),
+            task.get_bot_branch_text(),
+        ])
+
+    for column_cells in ws.columns:
+        max_len = max(len(str(c.value or "")) for c in column_cells)
+        ws.column_dimensions[column_cells[0].column_letter].width = min(max_len + 2, 70)
+
+    period_parts = []
+    if filter_values.get("completed_from_raw"):
+        period_parts.append(f"from_{filter_values['completed_from_raw']}")
+    if filter_values.get("completed_to_raw"):
+        period_parts.append(f"to_{filter_values['completed_to_raw']}")
+    suffix = "_".join(period_parts) if period_parts else "all"
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="completed_tasks_{suffix}.xlsx"'
+    wb.save(response)
+    return response
 
 
 def _handle_task_create(request, form, success_message, invalid_form_key):
@@ -904,12 +1047,16 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
         "build_form": BuildTaskRequestForm(prefix="build"),
     }
     forms_state[invalid_form_key] = form
-    return render(request, "marks/tasks_board.html", _tasks_board_context(**forms_state))
+    return render(
+        request,
+        "marks/tasks_board.html",
+        _tasks_board_context(current_user=request.user, **forms_state),
+    )
 
 
 @login_required
 @require_POST
-@require_roles(UserProfile.Role.ADMIN)
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_patch_task(request):
     form = PatchTaskRequestForm(request.POST, prefix="patch")
     return _handle_task_create(
@@ -922,7 +1069,7 @@ def create_patch_task(request):
 
 @login_required
 @require_POST
-@require_roles(UserProfile.Role.ADMIN)
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_mailing_task(request):
     form = MailingTaskRequestForm(request.POST, prefix="mailing")
     return _handle_task_create(
@@ -935,7 +1082,7 @@ def create_mailing_task(request):
 
 @login_required
 @require_POST
-@require_roles(UserProfile.Role.ADMIN)
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_build_task(request):
     form = BuildTaskRequestForm(request.POST, prefix="build")
     return _handle_task_create(
@@ -974,3 +1121,60 @@ def update_task_status(request, task_id):
     else:
         messages.info(request, "Статус не изменился.")
     return redirect("tasks_board")
+
+
+@login_required
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def experiments_board(request):
+    if request.method == "POST":
+        form = ExperimentForm(request.POST)
+        if form.is_valid():
+            experiment = form.save(commit=False)
+            experiment.created_by = request.user
+            experiment.save()
+            messages.success(request, "Эксперимент создан.")
+            return redirect("experiments_board")
+        messages.error(request, "Не удалось создать эксперимент. Проверьте заполнение полей.")
+    else:
+        form = ExperimentForm(initial={"status": Experiment.Status.BACKLOG})
+
+    option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
+    experiments = []
+    for experiment in Experiment.objects.select_related("created_by").all():
+        selected_options = experiment.ab_test_options or []
+        experiments.append(
+            {
+                "item": experiment,
+                "ab_option_labels": [option_labels.get(code, code) for code in selected_options],
+            }
+        )
+
+    return render(
+        request,
+        "marks/experiments_board.html",
+        {
+            "form": form,
+            "experiments": experiments,
+            "status_choices": Experiment.Status.choices,
+        },
+    )
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def update_experiment_status(request, experiment_id):
+    experiment = get_object_or_404(Experiment, id=experiment_id)
+    status_value = (request.POST.get("status") or "").strip()
+    if status_value not in Experiment.Status.values:
+        messages.error(request, "Недопустимый статус эксперимента.")
+        return redirect("experiments_board")
+
+    if experiment.status == status_value:
+        messages.info(request, "Статус эксперимента не изменился.")
+        return redirect("experiments_board")
+
+    experiment.status = status_value
+    experiment.save(update_fields=["status", "updated_at"])
+    messages.success(request, "Статус эксперимента обновлен.")
+    return redirect("experiments_board")

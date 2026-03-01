@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Эксперименты{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Эксперименты</h2>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light"><b>Создать эксперимент</b></div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-12">
+        <label class="form-label">{{ form.title.label }}</label>
+        {{ form.title }}
+        {% for error in form.title.errors %}
+          <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="col-12">
+        <div class="form-check">
+          {{ form.wants_ab_test }}
+          <label class="form-check-label" for="{{ form.wants_ab_test.id_for_label }}">
+            {{ form.wants_ab_test.label }}
+          </label>
+        </div>
+      </div>
+
+      <div class="col-12 d-none" id="ab-test-fields">
+        <div class="card border-0 bg-light">
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">{{ form.ab_test_options.label }}</label>
+              <div class="d-flex flex-column gap-1">
+                {{ form.ab_test_options }}
+              </div>
+              {% for error in form.ab_test_options.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3 d-none" id="ab-custom-option-wrap">
+              <label class="form-label">{{ form.ab_test_custom_option.label }}</label>
+              {{ form.ab_test_custom_option }}
+              {% for error in form.ab_test_custom_option.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.metric_impact.label }}</label>
+              {{ form.metric_impact }}
+              {% for error in form.metric_impact.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.expected_change.label }}</label>
+              {{ form.expected_change }}
+              {% for error in form.expected_change.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.hypothesis.label }}</label>
+              {{ form.hypothesis }}
+              <div class="form-text">
+                Формат: Если мы [изменение], то [какой показатель] вырастет/снизится, потому что [инсайт].
+              </div>
+              <div class="form-text">
+                Пример: Если добавим дедлайн в теме письма, то open rate вырастет на 5%, потому что создадим эффект срочности.
+              </div>
+              {% for error in form.hypothesis.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.traffic_volume.label }}</label>
+              {{ form.traffic_volume }}
+              {% for error in form.traffic_volume.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3 d-none" id="traffic-other-wrap">
+              <label class="form-label">{{ form.traffic_volume_other.label }}</label>
+              {{ form.traffic_volume_other }}
+              {% for error in form.traffic_volume_other.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">{{ form.test_duration.label }}</label>
+              {{ form.test_duration }}
+              {% for error in form.test_duration.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3 d-none" id="duration-users-wrap">
+              <label class="form-label">{{ form.duration_users.label }}</label>
+              {{ form.duration_users }}
+              {% for error in form.duration_users.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-0 d-none" id="duration-date-wrap">
+              <label class="form-label">{{ form.duration_end_date.label }}</label>
+              {{ form.duration_end_date }}
+              {% for error in form.duration_end_date.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label">{{ form.status.label }}</label>
+        {{ form.status }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">{{ form.comment.label }}</label>
+        {{ form.comment }}
+      </div>
+
+      <div class="col-12">
+        <button class="btn btn-primary">Создать эксперимент</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for experiment in experiments %}
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">
+              {{ experiment.item.title|default:"Эксперимент" }}
+            </h5>
+            <span class="badge text-bg-info">{{ experiment.item.get_status_display }}</span>
+          </div>
+          <div class="small text-muted mb-2">
+            #{{ experiment.item.id }} • {{ experiment.item.created_at|date:"d.m.Y H:i" }} • {{ experiment.item.created_by.username|default:"-" }}
+          </div>
+
+          <div class="small mb-1"><b>АБ тест:</b> {% if experiment.item.wants_ab_test %}Да{% else %}Нет{% endif %}</div>
+          {% if experiment.item.wants_ab_test %}
+            <div class="small mb-1"><b>Варианты:</b> {{ experiment.ab_option_labels|join:", " }}</div>
+            {% if experiment.item.ab_test_custom_option %}
+              <div class="small mb-1"><b>Свой вариант:</b> {{ experiment.item.ab_test_custom_option }}</div>
+            {% endif %}
+            <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
+            <div class="small mb-1"><b>Ожидаемое изменение:</b> {{ experiment.item.expected_change|default:"-" }}</div>
+            <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
+            <div class="small mb-1"><b>Объем трафика:</b> {{ experiment.item.get_traffic_volume_display|default:"-" }}</div>
+            {% if experiment.item.traffic_volume_other %}
+              <div class="small mb-1"><b>Объем (другое):</b> {{ experiment.item.traffic_volume_other }}</div>
+            {% endif %}
+            <div class="small mb-1"><b>Длительность:</b> {{ experiment.item.get_test_duration_display|default:"-" }}</div>
+            {% if experiment.item.duration_users %}
+              <div class="small mb-1"><b>X пользователей:</b> {{ experiment.item.duration_users }}</div>
+            {% endif %}
+            {% if experiment.item.duration_end_date %}
+              <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.duration_end_date|date:"d.m.Y" }}</div>
+            {% endif %}
+          {% endif %}
+
+          {% if experiment.item.comment %}
+            <div class="small mt-2"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
+          {% endif %}
+
+          <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="d-flex gap-2 mt-3">
+            {% csrf_token %}
+            <select class="form-select form-select-sm" name="status">
+              {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if value == experiment.item.status %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-outline-primary btn-sm">Сохранить</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="alert alert-light border">Экспериментов пока нет.</div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function() {
+    const wantsAB = document.getElementById("id_wants_ab_test");
+    const abFields = document.getElementById("ab-test-fields");
+    const trafficSelect = document.getElementById("id_traffic_volume");
+    const durationSelect = document.getElementById("id_test_duration");
+    const trafficOtherWrap = document.getElementById("traffic-other-wrap");
+    const durationUsersWrap = document.getElementById("duration-users-wrap");
+    const durationDateWrap = document.getElementById("duration-date-wrap");
+    const customOptionWrap = document.getElementById("ab-custom-option-wrap");
+    const customVariantCheckbox = document.getElementById("id_ab_test_options_6");
+
+    if (!wantsAB || !abFields) return;
+
+    function toggleABFields() {
+      abFields.classList.toggle("d-none", !wantsAB.checked);
+    }
+
+    function toggleTrafficOther() {
+      const show = trafficSelect && trafficSelect.value === "other";
+      trafficOtherWrap.classList.toggle("d-none", !show);
+    }
+
+    function toggleDurationFields() {
+      const value = durationSelect ? durationSelect.value : "";
+      durationUsersWrap.classList.toggle("d-none", value !== "until_users");
+      durationDateWrap.classList.toggle("d-none", value !== "end_date");
+    }
+
+    function toggleCustomOption() {
+      const show = !!(customVariantCheckbox && customVariantCheckbox.checked);
+      customOptionWrap.classList.toggle("d-none", !show);
+    }
+
+    wantsAB.addEventListener("change", toggleABFields);
+    if (trafficSelect) trafficSelect.addEventListener("change", toggleTrafficOther);
+    if (durationSelect) durationSelect.addEventListener("change", toggleDurationFields);
+    if (customVariantCheckbox) customVariantCheckbox.addEventListener("change", toggleCustomOption);
+
+    toggleABFields();
+    toggleTrafficOther();
+    toggleDurationFields();
+    toggleCustomOption();
+  })();
+</script>
+{% endblock %}
