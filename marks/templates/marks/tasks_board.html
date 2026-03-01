@@ -119,8 +119,10 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на правку</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_patch_task' %}" class="row g-3">
+        <form method="post" action="{% url 'create_patch_task' %}" class="row g-3" autocomplete="off">
           {% csrf_token %}
+          <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
+          <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
           <div class="col-12">
             <label class="form-label">{{ patch_form.branches.label }}</label>
             <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
@@ -179,8 +181,10 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на рассылку</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_mailing_task' %}" class="row g-3">
+        <form method="post" action="{% url 'create_mailing_task' %}" class="row g-3" autocomplete="off">
           {% csrf_token %}
+          <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
+          <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
           <div class="col-12">
             <label class="form-label">{{ mailing_form.branches.label }}</label>
             <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
@@ -239,8 +243,10 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на сборку бота</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_build_task' %}" class="row g-3">
+        <form method="post" action="{% url 'create_build_task' %}" class="row g-3" autocomplete="off">
           {% csrf_token %}
+          <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
+          <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
           <div class="col-12">
             <label class="form-label">{{ build_form.branches.label }}</label>
             <div class="small text-muted mb-1">Веток в системе: {{ branch_total }}</div>
@@ -359,10 +365,6 @@
       </div>
     </div>
   {% endfor %}
-</div>
-{% else %}
-<div class="alert alert-info">
-  Канбан в задачнике доступен только администраторам.
 </div>
 {% endif %}
 {% endblock %}

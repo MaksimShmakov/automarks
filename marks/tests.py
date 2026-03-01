@@ -42,7 +42,7 @@ class TaskBoardAccessTests(TaskBoardBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Задачник")
-        self.assertContains(response, "Канбан в задачнике доступен только администраторам")
+        self.assertNotContains(response, "Непрочитанное")
         self.assertNotContains(response, "Выгрузить выполненные за период")
 
 

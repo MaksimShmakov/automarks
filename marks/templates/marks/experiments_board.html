@@ -32,8 +32,15 @@
           <div class="card-body">
             <div class="mb-3">
               <label class="form-label">{{ form.ab_test_options.label }}</label>
-              <div class="d-flex flex-column gap-1">
-                {{ form.ab_test_options }}
+              <div class="d-flex flex-column gap-2">
+                {% for checkbox in form.ab_test_options %}
+                  <div class="form-check">
+                    {{ checkbox.tag }}
+                    <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                      {{ checkbox.choice_label }}
+                    </label>
+                  </div>
+                {% endfor %}
               </div>
               {% for error in form.ab_test_options.errors %}
                 <div class="invalid-feedback d-block">{{ error }}</div>
@@ -209,7 +216,7 @@
     const durationUsersWrap = document.getElementById("duration-users-wrap");
     const durationDateWrap = document.getElementById("duration-date-wrap");
     const customOptionWrap = document.getElementById("ab-custom-option-wrap");
-    const customVariantCheckbox = document.getElementById("id_ab_test_options_6");
+    const customVariantCheckbox = document.querySelector('input[name="ab_test_options"][value="custom"]');
 
     if (!wantsAB || !abFields) return;
 

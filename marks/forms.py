@@ -182,16 +182,23 @@ class BaseTaskRequestForm(forms.ModelForm):
                 field.input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"]
                 field.widget = forms.DateTimeInput(
                     format="%Y-%m-%dT%H:%M",
-                    attrs={"type": "datetime-local", "class": "form-control"},
+                    attrs={"type": "datetime-local", "class": "form-control", "autocomplete": "off"},
                 )
                 continue
             if name == "comment":
-                field.widget = forms.Textarea(attrs={"class": "form-control", "rows": 3})
+                field.widget = forms.Textarea(attrs={"class": "form-control", "rows": 3, "autocomplete": "off"})
                 continue
             if name == "build_token":
-                field.widget = forms.PasswordInput(render_value=True, attrs={"class": "form-control"})
+                field.widget = forms.PasswordInput(
+                    attrs={
+                        "class": "form-control",
+                        "autocomplete": "new-password",
+                        "data-lpignore": "true",
+                    }
+                )
                 continue
             field.widget.attrs["class"] = "form-control"
+            field.widget.attrs["autocomplete"] = "off"
 
     def _set_type(self, obj, task_type):
         obj.task_type = task_type
@@ -306,7 +313,7 @@ class ExperimentForm(forms.ModelForm):
     ab_test_options = forms.MultipleChoiceField(
         choices=AB_TEST_OPTIONS,
         required=False,
-        widget=forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
+        widget=forms.CheckboxSelectMultiple(),
         label="Варианты",
     )
 
