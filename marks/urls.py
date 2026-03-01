@@ -57,4 +57,5 @@ urlpatterns = [
     path("patch/new/", views_products.patchnote_create, name="patch_create"),
     path("product/<int:product_id>/reports/", views.product_reports, name="product_reports"),
     path("update_field/", views.update_field, name="update_field"),
+    path("telegram/webhook/<str:webhook_key>/", views.telegram_webhook, name="telegram_webhook"),
 ]

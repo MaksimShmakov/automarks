@@ -12,12 +12,11 @@ from marks.services.telegram import send_weekly_tasks_report
 from marks.services.task_legacy import get_task_feedback_map
 
 
-def _report_window(base_date):
-    # Friday is weekday 4 (Mon=0). We always take the latest Friday <= base_date.
-    days_since_friday = (base_date.weekday() - 4) % 7
-    friday = base_date - timedelta(days=days_since_friday)
-    sunday = friday - timedelta(days=5)
-    return sunday, friday
+def _week_to_date_window(base_date):
+    # Sunday start for current week (Mon=0..Sun=6).
+    days_since_sunday = (base_date.weekday() + 1) % 7
+    sunday = base_date - timedelta(days=days_since_sunday)
+    return sunday, base_date
 
 
 def _to_tz(dt_value, tz):
@@ -83,7 +82,7 @@ def _build_workbook(tasks, report_tz):
 
 
 class Command(BaseCommand):
-    help = "Send weekly completed tasks report (Sunday-Friday) to Telegram as XLSX."
+    help = "Send current week-to-date completed tasks report (Sunday..today) to Telegram as XLSX."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -102,7 +101,7 @@ class Command(BaseCommand):
             "--base-date",
             dest="base_date",
             default="",
-            help="Optional base date in YYYY-MM-DD. Latest Friday <= this date will be used.",
+            help="Optional base date in YYYY-MM-DD. Window will be Sunday..base-date.",
         )
         parser.add_argument(
             "--dry-run",
@@ -131,7 +130,7 @@ class Command(BaseCommand):
         else:
             base_date = datetime.now(report_tz).date()
 
-        period_from, period_to = _report_window(base_date)
+        period_from, period_to = _week_to_date_window(base_date)
         dt_from_local = datetime.combine(period_from, time.min, tzinfo=report_tz)
         dt_to_local_exclusive = datetime.combine(period_to + timedelta(days=1), time.min, tzinfo=report_tz)
 
@@ -148,16 +147,16 @@ class Command(BaseCommand):
         )
 
         content, tasks_count = _build_workbook(tasks_qs, report_tz)
-        filename = f"tasks_weekly_{period_from.isoformat()}_{period_to.isoformat()}.xlsx"
+        filename = f"tasks_week_current_{period_from.isoformat()}_{period_to.isoformat()}.xlsx"
         caption = (
-            f"Отчёт задачника за период {period_from.strftime('%d.%m.%Y')} - "
-            f"{period_to.strftime('%d.%m.%Y')} (вс-пт).\n"
+            f"Отчёт задачника за текущую неделю {period_from.strftime('%d.%m.%Y')} - "
+            f"{period_to.strftime('%d.%m.%Y')} (по текущую дату).\n"
             f"Выполненных задач: {tasks_count}"
         )
 
         self.stdout.write(
             self.style.WARNING(
-                f"Weekly window: {period_from.isoformat()}..{period_to.isoformat()}, tasks={tasks_count}"
+                f"Current-week window: {period_from.isoformat()}..{period_to.isoformat()}, tasks={tasks_count}"
             )
         )
         if options.get("dry_run"):
@@ -171,6 +170,7 @@ class Command(BaseCommand):
             caption=caption,
         )
         if not ok:
-            raise CommandError(f"Failed to send weekly report: {error}")
+            raise CommandError(f"Failed to send current-week report: {error}")
 
-        self.stdout.write(self.style.SUCCESS(f"Weekly report sent to {chat_id}."))
+        self.stdout.write(self.style.SUCCESS(f"Current-week report sent to {chat_id}."))
+

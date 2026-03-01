@@ -6,15 +6,17 @@ from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse, HttpResponse
+from django.conf import settings
 from django.contrib.auth import login
 from django.urls import reverse
 from datetime import datetime, timedelta
-from django.db import transaction, connection
+from django.db import transaction
 from django.db.models import Sum, Count
 from django.utils import timezone
 from decimal import Decimal
 import logging
 import json
+import re
 import csv
 import io
 from urllib.parse import urlencode
@@ -41,6 +43,12 @@ from .forms import (
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import notify_new_task, notify_status_change, notify_done_to_user
+from .services.task_legacy import (
+    get_task_feedback_map,
+    get_task_tg_username,
+    set_task_feedback_comment,
+    set_task_tg_username,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -851,66 +859,6 @@ def _build_task_filter_query(filters):
     return urlencode(params)
 
 
-def _quote_ident(name):
-    return '"' + str(name).replace('"', '""') + '"'
-
-
-def _legacy_task_columns(table_name):
-    if connection.vendor != "postgresql":
-        return set()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = %s
-                """,
-                [table_name],
-            )
-            return {row[0] for row in cursor.fetchall()}
-    except Exception:
-        logger.exception("Failed to read legacy columns for table %s", table_name)
-        return set()
-
-
-def _set_legacy_task_notify_data(task_id, tg_username, wants_notify):
-    tg_username = (tg_username or "").strip()
-    table_name = TaskRequest._meta.db_table
-
-    try:
-        legacy_cols = _legacy_task_columns(table_name)
-        if "tg_username" not in legacy_cols:
-            return
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE {_quote_ident(table_name)} SET {_quote_ident('tg_username')} = %s WHERE id = %s",
-                [tg_username if wants_notify else "", task_id],
-            )
-    except Exception:
-        logger.exception("Failed to set legacy notify data (task_id=%s)", task_id)
-
-
-def _get_legacy_task_notify_username(task_id):
-    table_name = TaskRequest._meta.db_table
-    try:
-        legacy_cols = _legacy_task_columns(table_name)
-        if "tg_username" not in legacy_cols:
-            return ""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT COALESCE({_quote_ident('tg_username')}, '') FROM {_quote_ident(table_name)} WHERE id = %s",
-                [task_id],
-            )
-            row = cursor.fetchone()
-            return (row[0] or "").strip() if row else ""
-    except Exception:
-        logger.exception("Failed to read legacy notify username (task_id=%s)", task_id)
-        return ""
-
-
 def _tasks_board_context(
     patch_form=None,
     mailing_form=None,
@@ -1027,6 +975,8 @@ def export_completed_tasks(request):
         status=TaskRequest.Status.DONE,
         completed_at__isnull=False,
     )
+    tasks = list(tasks_qs)
+    feedback_map = get_task_feedback_map(task.id for task in tasks)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1040,6 +990,7 @@ def export_completed_tasks(request):
         "Дедлайн",
         "Завершено",
         "Комментарий",
+        "Фидбек",
         "CJM/ТЗ",
         "Бот и ветки",
     ])
@@ -1047,7 +998,7 @@ def export_completed_tasks(request):
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center")
 
-    for task in tasks_qs:
+    for task in tasks:
         links = [value for value in [task.cjm_url, task.tz_url] if value]
         ws.append([
             task.id,
@@ -1058,6 +1009,7 @@ def export_completed_tasks(request):
             timezone.localtime(task.deadline).strftime("%d.%m.%Y %H:%M") if task.deadline else "-",
             timezone.localtime(task.completed_at).strftime("%d.%m.%Y %H:%M") if task.completed_at else "-",
             task.comment or "",
+            feedback_map.get(task.id, ""),
             " | ".join(links),
             task.get_bot_branch_text(),
         ])
@@ -1130,11 +1082,7 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
                 form.save_m2m()
             wants_notify = bool(form.cleaned_data.get("notify_me"))
             tg_username = form.cleaned_data.get("tg_username") or ""
-            _set_legacy_task_notify_data(
-                task_id=task.id,
-                tg_username=tg_username,
-                wants_notify=wants_notify,
-            )
+            set_task_tg_username(task.id, tg_username if wants_notify else "")
     except Exception:
         logger.exception(
             "Failed to create task request (form=%s, user_id=%s)",
@@ -1227,7 +1175,7 @@ def update_task_status(request, task_id):
             notify_ok, notify_error = bool(notify_result), ""
         user_notify_ok, user_notify_error = True, ""
         if task.status == TaskRequest.Status.DONE:
-            tg_username = _get_legacy_task_notify_username(task.id)
+            tg_username = get_task_tg_username(task.id)
             if tg_username:
                 user_notify_result = notify_done_to_user(task=task, tg_username=tg_username)
                 if isinstance(user_notify_result, tuple):
@@ -1250,6 +1198,38 @@ def update_task_status(request, task_id):
     else:
         messages.info(request, "Статус не изменился.")
     return redirect("tasks_board")
+
+
+@csrf_exempt
+@require_POST
+def telegram_webhook(request, webhook_key):
+    expected_key = (getattr(settings, "TELEGRAM_WEBHOOK_SECRET", "") or "").strip()
+    if not expected_key or webhook_key != expected_key:
+        return JsonResponse({"ok": False}, status=403)
+
+    try:
+        payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
+
+    message = payload.get("message") or payload.get("edited_message") or {}
+    text = (message.get("text") or message.get("caption") or "").strip()
+    reply_to = message.get("reply_to_message") or {}
+    reply_text = (reply_to.get("text") or reply_to.get("caption") or "").strip()
+    if not text or not reply_text:
+        return JsonResponse({"ok": True})
+
+    match = re.search(r"#(\d+)", reply_text)
+    if not match:
+        return JsonResponse({"ok": True})
+
+    task_id = int(match.group(1))
+    if not TaskRequest.objects.filter(id=task_id).exists():
+        return JsonResponse({"ok": True})
+
+    # Keep only the latest feedback text for a task.
+    set_task_feedback_comment(task_id=task_id, feedback_comment=text[:4000])
+    return JsonResponse({"ok": True})
 
 
 @login_required

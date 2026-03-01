@@ -1,9 +1,10 @@
 import io
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -169,7 +170,7 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(kwargs["changed_by"], self.admin_user)
 
     @patch("marks.views.notify_done_to_user")
-    @patch("marks.views._get_legacy_task_notify_username", return_value="test_user")
+    @patch("marks.views.get_task_tg_username", return_value="test_user")
     @patch("marks.views.notify_status_change")
     def test_status_done_sends_personal_notification_when_username_exists(
         self,
@@ -198,6 +199,37 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         status_notify_mock.assert_called_once()
         legacy_username_mock.assert_called_once_with(task.id)
         user_notify_mock.assert_called_once_with(task=task, tg_username="test_user")
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    @patch("marks.views.set_task_feedback_comment")
+    def test_telegram_webhook_saves_feedback_from_reply(self, set_feedback_mock):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.PATCH,
+            cjm_url="https://example.com/cjm",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+            status=TaskRequest.Status.DONE,
+        )
+        payload = {
+            "update_id": 1,
+            "message": {
+                "message_id": 101,
+                "text": "Все ок, спасибо!",
+                "reply_to_message": {
+                    "message_id": 100,
+                    "text": f"ID задачи: #{task.id}\nЗадача выполнена",
+                },
+            },
+        }
+
+        response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="Все ок, спасибо!")
 
     def test_tasks_board_filters_by_status(self):
         done_task = TaskRequest.objects.create(
@@ -332,6 +364,7 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertNotIn("Ветки", headers)
         self.assertIn("CJM/ТЗ", headers)
         self.assertIn("Бот и ветки", headers)
+        self.assertIn("Фидбек", headers)
 
         first_data_row = [cell.value for cell in sheet[2]]
         self.assertIn("https://example.com/tz", first_data_row)

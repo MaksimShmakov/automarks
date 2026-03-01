@@ -236,10 +236,12 @@ def notify_done_to_user(task, tg_username):
     text = (
         f"{header}\n\n"
         f"Получатель: {_safe(mention)}\n"
+        f"ID задачи: #{task.id}\n"
         f"Ваша задача #{task.id} переведена в статус: {_safe(task.get_status_display())}\n"
         f"Тип: {_safe(task.get_task_type_display())}\n"
         f"Дедлайн: {_format_deadline(task.deadline)}\n"
-        f"Бот и ветки: {_format_branches(task)}"
+        f"Бот и ветки: {_format_branches(task)}\n\n"
+        f"<b>Пожалуйста, оставьте комментарий о работе, ответив на это сообщение!</b>"
     )
     ok, error = _send_message(chat_id=direct_chat_id, text=text)
     if ok:
