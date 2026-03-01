@@ -94,6 +94,30 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(task.get_scope_units(), 1)
         notify_mock.assert_called_once_with(task)
 
+    @patch("marks.views.notify_new_task")
+    def test_create_mailing_task_accepts_local_deadline_format(self, notify_mock):
+        self.client.force_login(self.admin_user)
+        deadline = timezone.now() + timedelta(days=2)
+        response = self.client.post(
+            reverse("create_mailing_task"),
+            {
+                "mailing-branches": [self.branch_main.id],
+                "mailing-tz_url": "https://example.com/tz",
+                "mailing-comment": "Mailing comment",
+                "mailing-deadline": deadline.strftime("%d.%m.%Y %H:%M"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("tasks_board"))
+
+        task = TaskRequest.objects.get(task_type=TaskRequest.Type.MAILING)
+        self.assertEqual(task.status, TaskRequest.Status.UNREAD)
+        self.assertEqual(task.created_by, self.admin_user)
+        self.assertEqual(task.tz_url, "https://example.com/tz")
+        self.assertEqual(list(task.branches.values_list("id", flat=True)), [self.branch_main.id])
+        notify_mock.assert_called_once_with(task)
+
     @patch("marks.views.notify_status_change")
     def test_status_done_sets_completed_at_and_sends_notification(self, notify_mock):
         task = TaskRequest.objects.create(

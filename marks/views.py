@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Sum, Count
 from django.utils import timezone
 from decimal import Decimal
+import logging
 import json
 import csv
 import io
@@ -40,6 +41,8 @@ from .forms import (
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import notify_new_task, notify_status_change
+
+logger = logging.getLogger(__name__)
 
 TAG_UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
 TAG_CLEAR_FIELDS = {field: None for field in TAG_UTM_FIELDS}
@@ -1019,39 +1022,83 @@ def export_completed_tasks(request):
 
 
 def _handle_task_create(request, form, success_message, invalid_form_key):
-    if form.is_valid():
-        task = form.save(commit=False)
-        task.created_by = request.user
-        task.status = TaskRequest.Status.UNREAD
-        task.save()
-        if hasattr(form, "save_m2m"):
-            form.save_m2m()
+    try:
+        is_valid = form.is_valid()
+    except Exception:
+        logger.exception(
+            "Task form validation crashed (form=%s, user_id=%s)",
+            form.__class__.__name__,
+            getattr(request.user, "id", None),
+        )
+        messages.error(
+            request,
+            "Произошла внутренняя ошибка при проверке формы заявки.",
+        )
+        return redirect("tasks_board")
+
+    if not is_valid:
+        logger.warning(
+            "Task form invalid (form=%s, fields=%s, user_id=%s)",
+            form.__class__.__name__,
+            ",".join(sorted(form.errors.keys())),
+            getattr(request.user, "id", None),
+        )
+        messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
+        forms_state = {
+            "patch_form": PatchTaskRequestForm(prefix="patch"),
+            "mailing_form": MailingTaskRequestForm(prefix="mailing"),
+            "build_form": BuildTaskRequestForm(prefix="build"),
+        }
+        forms_state[invalid_form_key] = form
+        try:
+            return render(
+                request,
+                "marks/tasks_board.html",
+                _tasks_board_context(current_user=request.user, **forms_state),
+            )
+        except Exception:
+            logger.exception("Failed to render tasks board with invalid form")
+            return redirect("tasks_board")
+
+    try:
+        with transaction.atomic():
+            task = form.save(commit=False)
+            task.created_by = request.user
+            task.status = TaskRequest.Status.UNREAD
+            task.save()
+            if hasattr(form, "save_m2m"):
+                form.save_m2m()
+    except Exception:
+        logger.exception(
+            "Failed to create task request (form=%s, user_id=%s)",
+            form.__class__.__name__,
+            getattr(request.user, "id", None),
+        )
+        messages.error(
+            request,
+            "Произошла внутренняя ошибка при создании заявки. Детали записаны в логах сервера.",
+        )
+        return redirect("tasks_board")
+
+    notify_ok, notify_error = True, ""
+    try:
         notify_result = notify_new_task(task)
         if isinstance(notify_result, tuple):
             notify_ok, notify_error = notify_result
         else:
             notify_ok, notify_error = bool(notify_result), ""
-        messages.success(request, success_message)
-        if not notify_ok:
-            messages.warning(
-                request,
-                "Задача создана, но уведомление в Telegram не отправлено. "
-                + (notify_error or "Проверьте token/chat_id и перезапуск сервиса."),
-            )
-        return redirect("tasks_board")
+    except Exception:
+        logger.exception("Failed to send new task notification (task_id=%s)", task.id)
+        notify_ok, notify_error = False, "Сбой отправки уведомления."
 
-    messages.error(request, "Не удалось создать задачу. Проверьте заполнение полей.")
-    forms_state = {
-        "patch_form": PatchTaskRequestForm(prefix="patch"),
-        "mailing_form": MailingTaskRequestForm(prefix="mailing"),
-        "build_form": BuildTaskRequestForm(prefix="build"),
-    }
-    forms_state[invalid_form_key] = form
-    return render(
-        request,
-        "marks/tasks_board.html",
-        _tasks_board_context(current_user=request.user, **forms_state),
-    )
+    messages.success(request, success_message)
+    if not notify_ok:
+        messages.warning(
+            request,
+            "Задача создана, но уведомление в Telegram не отправлено. "
+            + (notify_error or "Проверьте token/chat_id и перезапуск сервиса."),
+        )
+    return redirect("tasks_board")
 
 
 @login_required

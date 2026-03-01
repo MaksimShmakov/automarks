@@ -179,7 +179,13 @@ class BaseTaskRequestForm(forms.ModelForm):
                     field.help_text = "Нет доступных веток. Сначала добавьте их в разделе 'Боты'."
                 continue
             if name == "deadline":
-                field.input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"]
+                field.input_formats = [
+                    "%Y-%m-%dT%H:%M",
+                    "%Y-%m-%d %H:%M",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%d.%m.%Y %H:%M",
+                    "%d.%m.%Y %H:%M:%S",
+                ]
                 field.widget = forms.DateTimeInput(
                     format="%Y-%m-%dT%H:%M",
                     attrs={"type": "datetime-local", "class": "form-control", "autocomplete": "off"},
