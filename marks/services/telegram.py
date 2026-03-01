@@ -1,5 +1,6 @@
 import html
 import logging
+import uuid
 from datetime import datetime as dt_datetime
 from urllib.error import HTTPError, URLError
 from urllib import parse, request
@@ -137,6 +138,64 @@ def _normalize_direct_chat(value):
     return f"@{raw}"
 
 
+def _send_document(chat_id, filename, content_bytes, caption=""):
+    token = _clean_env_value(getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", ""))
+    chat_id = _clean_env_value(chat_id)
+    if not token or not chat_id:
+        return False, "Не задан TELEGRAM_NOTIFY_BOT_TOKEN или chat_id"
+
+    if isinstance(content_bytes, str):
+        content_bytes = content_bytes.encode("utf-8")
+
+    boundary = f"----automarks-{uuid.uuid4().hex}"
+    crlf = b"\r\n"
+    body = bytearray()
+
+    def add_field(name, value):
+        body.extend(f"--{boundary}".encode("utf-8") + crlf)
+        body.extend(f'Content-Disposition: form-data; name="{name}"'.encode("utf-8") + crlf + crlf)
+        body.extend(str(value).encode("utf-8") + crlf)
+
+    add_field("chat_id", chat_id)
+    if caption:
+        add_field("caption", caption)
+
+    body.extend(f"--{boundary}".encode("utf-8") + crlf)
+    body.extend(
+        f'Content-Disposition: form-data; name="document"; filename="{filename}"'.encode("utf-8") + crlf
+    )
+    body.extend(
+        b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" + crlf + crlf
+    )
+    body.extend(content_bytes + crlf)
+    body.extend(f"--{boundary}--".encode("utf-8") + crlf)
+
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    headers = {
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+    try:
+        req = request.Request(url=url, data=bytes(body), headers=headers, method="POST")
+        with request.urlopen(req, timeout=15):
+            return True, ""
+    except HTTPError as exc:
+        details = ""
+        try:
+            body_text = exc.read().decode("utf-8", errors="replace")
+            data = json.loads(body_text)
+            details = data.get("description") or body_text
+        except Exception:
+            details = str(exc)
+        logger.exception("Telegram document HTTP error")
+        return False, f"Telegram API error: {details}"
+    except URLError as exc:
+        logger.exception("Telegram document URL error")
+        return False, f"Telegram network error: {exc.reason}"
+    except Exception:
+        logger.exception("Failed to send Telegram document")
+        return False, "Неизвестная ошибка отправки файла в Telegram"
+
+
 def notify_new_task(task):
     chat_id = getattr(settings, "TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
     platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
@@ -195,3 +254,7 @@ def notify_done_to_user(task, tg_username):
     if fallback_ok:
         return True, ""
     return False, fallback_error or error
+
+
+def send_weekly_tasks_report(chat_id, filename, content_bytes, caption=""):
+    return _send_document(chat_id=chat_id, filename=filename, content_bytes=content_bytes, caption=caption)
