@@ -27,14 +27,26 @@ def _safe(value):
 def _format_datetime(dt):
     if not dt:
         return "-"
-    return timezone.localtime(dt).strftime("%d.%m.%Y %H:%M")
+    try:
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        dt = timezone.localtime(dt)
+    except Exception:
+        pass
+    return dt.strftime("%d.%m.%Y %H:%M")
 
 
 def _format_deadline(value):
     if not value:
         return "-"
     if isinstance(value, dt_datetime):
-        return timezone.localtime(value).strftime("%d.%m.%Y %H:%M")
+        try:
+            if timezone.is_naive(value):
+                value = timezone.make_aware(value, timezone.get_current_timezone())
+            value = timezone.localtime(value)
+        except Exception:
+            pass
+        return value.strftime("%d.%m.%Y %H:%M")
     return value.strftime("%d.%m.%Y")
 
 
