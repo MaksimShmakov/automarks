@@ -231,6 +231,64 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(response.status_code, 200)
         set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="Все ок, спасибо!")
 
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    @patch("marks.views.send_text_message")
+    @patch("marks.views.send_weekly_tasks_report", return_value=(True, ""))
+    def test_telegram_webhook_week_command_sends_report(self, send_report_mock, send_text_mock):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.PATCH,
+            cjm_url="https://example.com/cjm",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+            status=TaskRequest.Status.DONE,
+        )
+        task.completed_at = timezone.now()
+        task.save(update_fields=["completed_at"])
+
+        payload = {
+            "update_id": 2,
+            "message": {
+                "message_id": 102,
+                "text": "/week",
+                "chat": {"id": 439144407},
+            },
+        }
+        response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        send_report_mock.assert_called_once()
+        kwargs = send_report_mock.call_args.kwargs
+        self.assertEqual(kwargs["chat_id"], "439144407")
+        self.assertIn("tasks_week_current_", kwargs["filename"])
+        self.assertIn("текущую неделю", kwargs["caption"])
+        send_text_mock.assert_not_called()
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    @patch("marks.views.send_text_message")
+    @patch("marks.views.send_weekly_tasks_report", return_value=(True, ""))
+    def test_telegram_webhook_month_command_rejects_bad_date(self, send_report_mock, send_text_mock):
+        payload = {
+            "update_id": 3,
+            "message": {
+                "message_id": 103,
+                "text": "/month 15-02-2026",
+                "chat": {"id": 439144407},
+            },
+        }
+        response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        send_report_mock.assert_not_called()
+        send_text_mock.assert_called_once()
+
     def test_tasks_board_filters_by_status(self):
         done_task = TaskRequest.objects.create(
             task_type=TaskRequest.Type.BUILD,

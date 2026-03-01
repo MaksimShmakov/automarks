@@ -9,11 +9,12 @@ from django.http import JsonResponse, HttpResponse
 from django.conf import settings
 from django.contrib.auth import login
 from django.urls import reverse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from django.db import transaction
 from django.db.models import Sum, Count
 from django.utils import timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 import logging
 import json
 import re
@@ -42,7 +43,13 @@ from .forms import (
     ExperimentForm,
 )
 from .permissions import require_roles, BOT_OPERATORS_GROUP
-from .services.telegram import notify_new_task, notify_status_change, notify_done_to_user
+from .services.telegram import (
+    notify_new_task,
+    notify_status_change,
+    notify_done_to_user,
+    send_weekly_tasks_report,
+    send_text_message,
+)
 from .services.task_legacy import (
     get_task_feedback_map,
     get_task_tg_username,
@@ -859,6 +866,150 @@ def _build_task_filter_query(filters):
     return urlencode(params)
 
 
+def _to_report_dt_str(dt_value, report_tz):
+    if not dt_value:
+        return "-"
+    try:
+        return dt_value.astimezone(report_tz).strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        return timezone.localtime(dt_value).strftime("%d.%m.%Y %H:%M")
+
+
+def _build_completed_tasks_excel_bytes(tasks, report_tz):
+    tasks = list(tasks)
+    feedback_map = get_task_feedback_map(task.id for task in tasks)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Выполненные задачи"
+    ws.append([
+        "ID",
+        "Тип",
+        "Статус",
+        "Создал",
+        "Создано",
+        "Дедлайн",
+        "Завершено",
+        "Комментарий",
+        "Фидбек",
+        "CJM/ТЗ",
+        "Бот и ветки",
+    ])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    for task in tasks:
+        links = [value for value in [task.cjm_url, task.tz_url] if value]
+        ws.append([
+            task.id,
+            task.get_task_type_display(),
+            task.get_status_display(),
+            task.created_by.username if task.created_by else "-",
+            _to_report_dt_str(task.created_at, report_tz),
+            _to_report_dt_str(task.deadline, report_tz),
+            _to_report_dt_str(task.completed_at, report_tz),
+            task.comment or "",
+            feedback_map.get(task.id, ""),
+            " | ".join(links),
+            task.get_bot_branch_text(),
+        ])
+
+    for column_cells in ws.columns:
+        max_len = max(len(str(c.value or "")) for c in column_cells)
+        ws.column_dimensions[column_cells[0].column_letter].width = min(max_len + 2, 70)
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue(), len(tasks)
+
+
+def _week_to_date_window(base_date):
+    days_since_sunday = (base_date.weekday() + 1) % 7
+    sunday = base_date - timedelta(days=days_since_sunday)
+    return sunday, base_date
+
+
+def _month_to_date_window(base_date):
+    return base_date.replace(day=1), base_date
+
+
+def _handle_telegram_report_command(message_text, chat_id):
+    if not message_text:
+        return False
+
+    parts = message_text.strip().split()
+    if not parts:
+        return False
+
+    cmd = parts[0].split("@")[0].lower()
+    if cmd not in {"/week", "/month"}:
+        return False
+
+    chat_id = str(chat_id or "").strip()
+    if not chat_id:
+        return True
+
+    if len(parts) > 2:
+        send_text_message(chat_id, "Формат: /week [YYYY-MM-DD] или /month [YYYY-MM-DD]")
+        return True
+
+    tz_name = (getattr(settings, "WEEKLY_TASKS_REPORT_TZ", "Europe/Moscow") or "Europe/Moscow").strip()
+    try:
+        report_tz = ZoneInfo(tz_name)
+    except Exception:
+        report_tz = ZoneInfo("UTC")
+
+    if len(parts) == 2:
+        try:
+            base_date = datetime.strptime(parts[1], "%Y-%m-%d").date()
+        except ValueError:
+            send_text_message(chat_id, "Неверная дата. Используйте формат YYYY-MM-DD.")
+            return True
+    else:
+        base_date = datetime.now(report_tz).date()
+
+    if cmd == "/week":
+        period_from, period_to = _week_to_date_window(base_date)
+        caption_prefix = "текущую неделю"
+        filename_prefix = "tasks_week_current"
+    else:
+        period_from, period_to = _month_to_date_window(base_date)
+        caption_prefix = "текущий месяц"
+        filename_prefix = "tasks_month_current"
+
+    dt_from_local = datetime.combine(period_from, time.min, tzinfo=report_tz)
+    dt_to_local_exclusive = datetime.combine(period_to + timedelta(days=1), time.min, tzinfo=report_tz)
+    tasks_qs = (
+        TaskRequest.objects.select_related("created_by")
+        .prefetch_related("branches__bot")
+        .filter(
+            status=TaskRequest.Status.DONE,
+            completed_at__isnull=False,
+            completed_at__gte=dt_from_local,
+            completed_at__lt=dt_to_local_exclusive,
+        )
+        .order_by("-completed_at")
+    )
+
+    content, tasks_count = _build_completed_tasks_excel_bytes(tasks_qs, report_tz)
+    filename = f"{filename_prefix}_{period_from.isoformat()}_{period_to.isoformat()}.xlsx"
+    caption = (
+        f"Отчёт задачника за {caption_prefix} {period_from.strftime('%d.%m.%Y')} - "
+        f"{period_to.strftime('%d.%m.%Y')}.\nВыполненных задач: {tasks_count}"
+    )
+
+    ok, error = send_weekly_tasks_report(
+        chat_id=chat_id,
+        filename=filename,
+        content_bytes=content,
+        caption=caption,
+    )
+    if not ok:
+        send_text_message(chat_id, f"Не удалось отправить отчёт: {error}")
+    return True
+
+
 def _tasks_board_context(
     patch_form=None,
     mailing_form=None,
@@ -1214,6 +1365,12 @@ def telegram_webhook(request, webhook_key):
 
     message = payload.get("message") or payload.get("edited_message") or {}
     text = (message.get("text") or message.get("caption") or "").strip()
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+
+    if text and _handle_telegram_report_command(text, chat_id):
+        return JsonResponse({"ok": True})
+
     reply_to = message.get("reply_to_message") or {}
     reply_text = (reply_to.get("text") or reply_to.get("caption") or "").strip()
     if not text or not reply_text:

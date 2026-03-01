@@ -260,3 +260,7 @@ def notify_done_to_user(task, tg_username):
 
 def send_weekly_tasks_report(chat_id, filename, content_bytes, caption=""):
     return _send_document(chat_id=chat_id, filename=filename, content_bytes=content_bytes, caption=caption)
+
+
+def send_text_message(chat_id, text):
+    return _send_message(chat_id=chat_id, text=text)
