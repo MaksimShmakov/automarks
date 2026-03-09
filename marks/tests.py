@@ -257,6 +257,72 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="Все ок, спасибо!")
 
     @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    @patch("marks.views.set_task_feedback_comment")
+    def test_telegram_webhook_saves_feedback_from_quote_when_reply_is_inaccessible(self, set_feedback_mock):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.PATCH,
+            cjm_url="https://example.com/cjm",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+            status=TaskRequest.Status.DONE,
+        )
+        payload = {
+            "update_id": 5,
+            "message": {
+                "message_id": 105,
+                "text": "РЎРїР°СЃРёР±Рѕ, РІС‹ СЃСѓРїРµСЂ!!",
+                "reply_to_message": {
+                    "message_id": 104,
+                    "date": 0,
+                    "chat": {"id": -100100100, "type": "supergroup"},
+                },
+                "quote": {
+                    "text": f"Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅР°\nID Р·Р°РґР°С‡Рё: #{task.id}",
+                },
+            },
+        }
+
+        response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="РЎРїР°СЃРёР±Рѕ, РІС‹ СЃСѓРїРµСЂ!!")
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    @patch("marks.views.set_task_feedback_comment")
+    def test_telegram_webhook_saves_feedback_from_business_message_external_reply(self, set_feedback_mock):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.MAILING,
+            tz_url="https://example.com/tz",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+            status=TaskRequest.Status.DONE,
+        )
+        payload = {
+            "update_id": 6,
+            "business_message": {
+                "message_id": 106,
+                "text": "Р¤РёРґР±РµРє РёР· business chat",
+                "external_reply": {
+                    "message_id": 105,
+                    "text": f"ID Р·Р°РґР°С‡Рё: #{task.id}\nР—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅР°",
+                },
+            },
+        }
+
+        response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="Р¤РёРґР±РµРє РёР· business chat")
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
     def test_telegram_webhook_feedback_is_exported(self):
         task = TaskRequest.objects.create(
             task_type=TaskRequest.Type.PATCH,

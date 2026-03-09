@@ -64,6 +64,14 @@ TAG_CLEAR_FIELDS = {field: None for field in TAG_UTM_FIELDS}
 TAG_CLEAR_FIELDS["budget"] = None
 TAG_CLEAR_FIELDS["url"] = None
 TAG_UNDO_SESSION_KEY = "last_tag_action"
+TELEGRAM_UPDATE_MESSAGE_KEYS = (
+    "message",
+    "edited_message",
+    "channel_post",
+    "edited_channel_post",
+    "business_message",
+    "edited_business_message",
+)
 
 
 def get_user_role(user):
@@ -89,6 +97,59 @@ def _set_last_tag_action(request, action, branch_id, payload):
         "payload": payload,
     }
     request.session.modified = True
+
+
+def _get_telegram_update_message(payload):
+    for key in TELEGRAM_UPDATE_MESSAGE_KEYS:
+        message = payload.get(key)
+        if isinstance(message, dict):
+            return message
+    return {}
+
+
+def _get_telegram_message_text(message):
+    if not isinstance(message, dict):
+        return ""
+    return str(message.get("text") or message.get("caption") or "").strip()
+
+
+def _extract_task_id_from_telegram_payload(value):
+    if isinstance(value, str):
+        match = re.search(r"#(\d+)\b", value)
+        return int(match.group(1)) if match else None
+
+    if isinstance(value, list):
+        for item in value:
+            task_id = _extract_task_id_from_telegram_payload(item)
+            if task_id is not None:
+                return task_id
+        return None
+
+    if not isinstance(value, dict):
+        return None
+
+    for key in ("text", "caption", "quote", "reply_to_message", "external_reply"):
+        task_id = _extract_task_id_from_telegram_payload(value.get(key))
+        if task_id is not None:
+            return task_id
+
+    for key, nested_value in value.items():
+        if key in {"text", "caption", "quote", "reply_to_message", "external_reply"}:
+            continue
+        task_id = _extract_task_id_from_telegram_payload(nested_value)
+        if task_id is not None:
+            return task_id
+    return None
+
+
+def _extract_task_id_from_telegram_reply(message):
+    if not isinstance(message, dict):
+        return None
+    for key in ("reply_to_message", "external_reply", "quote"):
+        task_id = _extract_task_id_from_telegram_payload(message.get(key))
+        if task_id is not None:
+            return task_id
+    return None
 
 
 class RoleAwareLoginView(LoginView):
@@ -1363,24 +1424,21 @@ def telegram_webhook(request, webhook_key):
     except Exception:
         return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
 
-    message = payload.get("message") or payload.get("edited_message") or {}
-    text = (message.get("text") or message.get("caption") or "").strip()
+    message = _get_telegram_update_message(payload)
+    text = _get_telegram_message_text(message)
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
 
     if text and _handle_telegram_report_command(text, chat_id):
         return JsonResponse({"ok": True})
 
-    reply_to = message.get("reply_to_message") or {}
-    reply_text = (reply_to.get("text") or reply_to.get("caption") or "").strip()
-    if not text or not reply_text:
+    if not text:
         return JsonResponse({"ok": True})
 
-    match = re.search(r"#(\d+)", reply_text)
-    if not match:
+    task_id = _extract_task_id_from_telegram_reply(message)
+    if task_id is None:
         return JsonResponse({"ok": True})
 
-    task_id = int(match.group(1))
     if not TaskRequest.objects.filter(id=task_id).exists():
         return JsonResponse({"ok": True})
 

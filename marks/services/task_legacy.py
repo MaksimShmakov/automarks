@@ -63,6 +63,7 @@ def get_task_tg_username(task_id):
 
 def set_task_feedback_comment(task_id, feedback_comment):
     if not has_task_legacy_column("feedback_comment"):
+        logger.warning("Skipping feedback_comment save for task_id=%s because column is missing", task_id)
         return
     table_name = _task_table_name()
     try:
