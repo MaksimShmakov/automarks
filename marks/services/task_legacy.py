@@ -17,21 +17,10 @@ def _task_table_name():
 
 
 def task_legacy_columns():
-    if connection.vendor != "postgresql":
-        return set()
     table_name = _task_table_name()
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = %s
-                """,
-                [table_name],
-            )
-            return {row[0] for row in cursor.fetchall()}
+            return {column.name for column in connection.introspection.get_table_description(cursor, table_name)}
     except Exception:
         logger.exception("Failed to read legacy columns for table %s", table_name)
         return set()
@@ -104,4 +93,3 @@ def get_task_feedback_map(task_ids: Iterable[int]):
     except Exception:
         logger.exception("Failed to read feedback map for task ids")
         return {}
-

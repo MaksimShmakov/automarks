@@ -73,13 +73,13 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         notify_mock.assert_called_once_with(task)
 
     @patch("marks.views.notify_new_task")
-    def test_create_build_task_sets_formatted_build_name(self, notify_mock):
+    def test_create_build_task_uses_manual_bot_name(self, notify_mock):
         self.client.force_login(self.admin_user)
         deadline = timezone.now() + timedelta(days=2)
         response = self.client.post(
             reverse("create_build_task"),
             {
-                "build-branches": [self.branch_main.id],
+                "build-bot_name": "@new_bot",
                 "build-build_token": "1234567890",
                 "build-cjm_url": "https://example.com/cjm-build",
                 "build-comment": "Build comment",
@@ -91,7 +91,32 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertRedirects(response, reverse("tasks_board"))
 
         task = TaskRequest.objects.get(task_type=TaskRequest.Type.BUILD)
-        self.assertEqual(task.build_name, "test_bot_name")
+        self.assertEqual(task.build_name, "@new_bot")
+        self.assertEqual(task.branches.count(), 0)
+        self.assertEqual(task.get_scope_units(), 1)
+        notify_mock.assert_called_once_with(task)
+
+    @patch("marks.views.notify_new_task")
+    def test_create_build_task_appends_optional_branch_name(self, notify_mock):
+        self.client.force_login(self.admin_user)
+        deadline = timezone.now() + timedelta(days=2)
+        response = self.client.post(
+            reverse("create_build_task"),
+            {
+                "build-bot_name": "@new_bot",
+                "build-branch_name": "feature-login",
+                "build-build_token": "1234567890",
+                "build-cjm_url": "https://example.com/cjm-build",
+                "build-comment": "Build comment",
+                "build-deadline": deadline.strftime("%Y-%m-%dT%H:%M"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("tasks_board"))
+
+        task = TaskRequest.objects.get(task_type=TaskRequest.Type.BUILD)
+        self.assertEqual(task.build_name, "@new_bot / feature-login")
         self.assertEqual(task.get_scope_units(), 1)
         notify_mock.assert_called_once_with(task)
 
@@ -230,6 +255,48 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         set_feedback_mock.assert_called_once_with(task_id=task.id, feedback_comment="Все ок, спасибо!")
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
+    def test_telegram_webhook_feedback_is_exported(self):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.PATCH,
+            cjm_url="https://example.com/cjm",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+            status=TaskRequest.Status.DONE,
+        )
+        payload = {
+            "update_id": 4,
+            "message": {
+                "message_id": 104,
+                "text": "Фидбек по задаче",
+                "reply_to_message": {
+                    "message_id": 103,
+                    "text": f"ID задачи: #{task.id}\nЗадача выполнена",
+                },
+            },
+        }
+
+        webhook_response = self.client.post(
+            reverse("telegram_webhook", kwargs={"webhook_key": "secret-key"}),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(webhook_response.status_code, 200)
+
+        self.client.force_login(self.admin_user)
+        export_response = self.client.get(reverse("export_completed_tasks"))
+
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(io.BytesIO(export_response.content))
+        sheet = workbook.active
+        headers = [cell.value for cell in sheet[1]]
+        feedback_index = headers.index("Фидбек")
+        rows = list(sheet.iter_rows(min_row=2, values_only=True))
+        row = next(row for row in rows if row[0] == task.id)
+
+        self.assertEqual(row[feedback_index], "Фидбек по задаче")
 
     @override_settings(TELEGRAM_WEBHOOK_SECRET="secret-key")
     @patch("marks.views.send_text_message")

@@ -305,11 +305,20 @@ class MailingTaskRequestForm(BaseTaskRequestForm):
 
 
 class BuildTaskRequestForm(BaseTaskRequestForm):
+    bot_name = forms.CharField(
+        max_length=255,
+        label="Имя бота",
+    )
+    branch_name = forms.CharField(
+        required=False,
+        max_length=255,
+        label="Ветка (необязательно)",
+    )
+
     class Meta:
         model = TaskRequest
-        fields = ["branches", "build_token", "cjm_url", "comment", "deadline"]
+        fields = ["build_token", "cjm_url", "comment", "deadline"]
         labels = {
-            "branches": "Бот и ветки",
             "build_token": "Токен",
             "cjm_url": "CJM (ссылка)",
             "comment": "Комментарий",
@@ -318,25 +327,31 @@ class BuildTaskRequestForm(BaseTaskRequestForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["branches"].required = True
+        self.fields["bot_name"].widget.attrs["placeholder"] = "@new_bot"
+        self.fields["branch_name"].widget.attrs["placeholder"] = "main"
         self.fields["build_token"].required = True
         self.fields["cjm_url"].required = True
+
+    def clean(self):
+        cleaned = super().clean()
+        bot_name = " ".join((cleaned.get("bot_name") or "").replace(",", " ").strip().split())
+        branch_name = " ".join((cleaned.get("branch_name") or "").replace(",", " ").strip().split())
+
+        if not bot_name:
+            self.add_error("bot_name", "Укажите имя бота.")
+
+        cleaned["bot_name"] = bot_name
+        cleaned["branch_name"] = branch_name
+        return cleaned
 
     def save(self, commit=True):
         obj = super().save(commit=False)
         self._set_type(obj, TaskRequest.Type.BUILD)
-        selected_branches = self.cleaned_data.get("branches") or []
-        labels = []
-        seen = set()
-        for branch in selected_branches:
-            label = TaskRequest._bot_branch_label(branch)
-            if label and label not in seen:
-                labels.append(label)
-                seen.add(label)
-        obj.build_name = ", ".join(labels)
+        bot_name = self.cleaned_data.get("bot_name") or ""
+        branch_name = self.cleaned_data.get("branch_name") or ""
+        obj.build_name = f"{bot_name} / {branch_name}" if branch_name else bot_name
         if commit:
             obj.save()
-            self.save_m2m()
         return obj
 
 

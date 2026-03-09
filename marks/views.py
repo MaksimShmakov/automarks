@@ -1026,7 +1026,7 @@ def _tasks_board_context(
 
     patch_selected = set(str(v) for v in (patch_form["branches"].value() or []))
     mailing_selected = set(str(v) for v in (mailing_form["branches"].value() or []))
-    build_selected = set(str(v) for v in (build_form["branches"].value() or []))
+    build_selected = set(str(v) for v in (build_form["branches"].value() or [])) if "branches" in build_form.fields else set()
 
     if tasks is None:
         tasks = list(
