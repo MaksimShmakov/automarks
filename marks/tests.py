@@ -1,6 +1,6 @@
 import io
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 
-from .models import Bot, Branch, Product, TaskRequest, UserProfile
+from .models import Bot, Branch, Experiment, Product, TaskRequest, UserProfile
 
 
 class TaskBoardBaseTestCase(TestCase):
@@ -560,3 +560,153 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         first_data_row = [cell.value for cell in sheet[2]]
         self.assertIn("https://example.com/tz", first_data_row)
         self.assertIn("test_bot_name", first_data_row)
+
+
+class ExperimentBoardTests(TaskBoardBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin_user)
+
+    def _experiment_payload(self, **overrides):
+        payload = {
+            "title": "Новый A/B тест",
+            "wants_ab_test": "on",
+            "ab_test_options": ["start"],
+            "ab_test_custom_option": "",
+            "metric_impact": "CR",
+            "expected_change": "+8%",
+            "hypothesis": "Если изменить первый экран, конверсия вырастет.",
+            "traffic_volume": Experiment.TrafficVolume.SPLIT_50_50,
+            "traffic_volume_other": "",
+            "test_duration": Experiment.TestDuration.DAYS_7,
+            "duration_users": "",
+            "duration_end_date": "",
+            "start_date": "2026-03-10",
+            "end_date": "2026-03-17",
+            "dashboard_url": "https://example.com/dashboard/exp-1",
+            "result_variant_a": "CR 11%, open rate 24%",
+            "result_variant_b": "CR 13%, open rate 28%",
+            "comment": "Комментарий по эксперименту",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_create_experiment_saves_dates_and_manual_results(self):
+        response = self.client.post(reverse("experiments_board"), self._experiment_payload())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("experiments_board"))
+
+        experiment = Experiment.objects.get(title="Новый A/B тест")
+        self.assertEqual(experiment.status, Experiment.Status.BACKLOG)
+        self.assertEqual(experiment.start_date, date(2026, 3, 10))
+        self.assertEqual(experiment.end_date, date(2026, 3, 17))
+        self.assertEqual(experiment.dashboard_url, "https://example.com/dashboard/exp-1")
+        self.assertEqual(experiment.result_variant_a, "CR 11%, open rate 24%")
+        self.assertEqual(experiment.result_variant_b, "CR 13%, open rate 28%")
+
+    def test_edit_experiment_updates_dates_and_metrics(self):
+        experiment = Experiment.objects.create(
+            title="Текущий тест",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Исходная гипотеза",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+        )
+
+        payload = self._experiment_payload(
+            title="Текущий тест",
+            experiment_id=str(experiment.id),
+            result_variant_a="CR 10%",
+            result_variant_b="CR 14%",
+            start_date="2026-03-11",
+            end_date="2026-03-18",
+        )
+        response = self.client.post(reverse("experiments_board"), payload)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("experiments_board"))
+
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.start_date, date(2026, 3, 11))
+        self.assertEqual(experiment.end_date, date(2026, 3, 18))
+        self.assertEqual(experiment.result_variant_a, "CR 10%")
+        self.assertEqual(experiment.result_variant_b, "CR 14%")
+
+    def test_final_status_requires_dates_and_ab_results(self):
+        experiment = Experiment.objects.create(
+            title="Тест без итогов",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Проверяем первый экран",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+            status=Experiment.Status.COMPLETED,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": experiment.id}),
+            {"status": Experiment.Status.SUCCESS},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.status, Experiment.Status.COMPLETED)
+        self.assertContains(response, "Перед финальным решением заполните")
+
+    def test_finalized_experiment_moves_to_library(self):
+        active_experiment = Experiment.objects.create(
+            title="Активный тест",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Активная гипотеза",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+            status=Experiment.Status.DRAFT,
+        )
+        final_experiment = Experiment.objects.create(
+            title="Финальный тест",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Финальная гипотеза",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 3, 10),
+            end_date=date(2026, 3, 17),
+            result_variant_a="CR 10%",
+            result_variant_b="CR 15%",
+            created_by=self.admin_user,
+            status=Experiment.Status.SUCCESS,
+        )
+
+        response = self.client.get(reverse("experiments_board"))
+
+        self.assertEqual(response.status_code, 200)
+
+        active_ids = [
+            item["item"].id
+            for column in response.context["active_columns"]
+            for item in column["items"]
+        ]
+        library_ids = [
+            item["item"].id
+            for column in response.context["library_columns"]
+            for item in column["items"]
+        ]
+
+        self.assertIn(active_experiment.id, active_ids)
+        self.assertNotIn(final_experiment.id, active_ids)
+        self.assertIn(final_experiment.id, library_ids)

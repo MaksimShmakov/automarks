@@ -2,14 +2,54 @@
 
 {% block title %}Эксперименты{% endblock %}
 
+{% block extra_head %}
+<style>
+  .experiment-column {
+    min-height: 100%;
+  }
+  .experiment-column .card-body {
+    background: #f8f9fa;
+  }
+  .experiment-item {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .experiment-text {
+    white-space: pre-line;
+  }
+  .experiment-empty {
+    border: 1px dashed rgba(0, 0, 0, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: #fff;
+  }
+  .inline-status-form {
+    display: inline-block;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<h2 class="mb-3">Эксперименты</h2>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="mb-0">Эксперименты</h2>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ default_dashboard_url }}" class="btn btn-outline-secondary btn-sm">Открыть общий dashboard</a>
+    {% if editing_experiment %}
+      <a href="{% url 'experiments_board' %}" class="btn btn-outline-dark btn-sm">Сбросить редактирование</a>
+    {% endif %}
+  </div>
+</div>
 
 <div class="card shadow-sm mb-4">
-  <div class="card-header bg-light"><b>Создать эксперимент</b></div>
+  <div class="card-header bg-light">
+    <b>{% if editing_experiment %}Редактировать эксперимент{% else %}Создать эксперимент{% endif %}</b>
+  </div>
   <div class="card-body">
     <form method="post" class="row g-3">
       {% csrf_token %}
+      {% if editing_experiment %}
+        <input type="hidden" name="experiment_id" value="{{ editing_experiment.id }}">
+      {% endif %}
+
       <div class="col-12">
         <label class="form-label">{{ form.title.label }}</label>
         {{ form.title }}
@@ -30,176 +70,360 @@
       <div class="col-12 d-none" id="ab-test-fields">
         <div class="card border-0 bg-light">
           <div class="card-body">
-            <div class="mb-3">
-              <label class="form-label">{{ form.ab_test_options.label }}</label>
-              <div class="d-flex flex-column gap-2">
-                {% for checkbox in form.ab_test_options %}
-                  <div class="form-check">
-                    {{ checkbox.tag }}
-                    <label class="form-check-label" for="{{ checkbox.id_for_label }}">
-                      {{ checkbox.choice_label }}
-                    </label>
-                  </div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">{{ form.ab_test_options.label }}</label>
+                <div class="d-flex flex-column gap-2">
+                  {% for checkbox in form.ab_test_options %}
+                    <div class="form-check">
+                      {{ checkbox.tag }}
+                      <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                        {{ checkbox.choice_label }}
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
+                {% for error in form.ab_test_options.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
               </div>
-              {% for error in form.ab_test_options.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
 
-            <div class="mb-3 d-none" id="ab-custom-option-wrap">
-              <label class="form-label">{{ form.ab_test_custom_option.label }}</label>
-              {{ form.ab_test_custom_option }}
-              {% for error in form.ab_test_custom_option.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">{{ form.metric_impact.label }}</label>
-              {{ form.metric_impact }}
-              {% for error in form.metric_impact.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">{{ form.expected_change.label }}</label>
-              {{ form.expected_change }}
-              {% for error in form.expected_change.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">{{ form.hypothesis.label }}</label>
-              {{ form.hypothesis }}
-              <div class="form-text">
-                Формат: Если мы [изменение], то [какой показатель] вырастет/снизится, потому что [инсайт].
+              <div class="col-12 d-none" id="ab-custom-option-wrap">
+                <label class="form-label">{{ form.ab_test_custom_option.label }}</label>
+                {{ form.ab_test_custom_option }}
+                {% for error in form.ab_test_custom_option.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
               </div>
-              <div class="form-text">
-                Пример: Если добавим дедлайн в теме письма, то open rate вырастет на 5%, потому что создадим эффект срочности.
+
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.metric_impact.label }}</label>
+                {{ form.metric_impact }}
+                {% for error in form.metric_impact.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
               </div>
-              {% for error in form.hypothesis.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
 
-            <div class="mb-3">
-              <label class="form-label">{{ form.traffic_volume.label }}</label>
-              {{ form.traffic_volume }}
-              {% for error in form.traffic_volume.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.expected_change.label }}</label>
+                {{ form.expected_change }}
+                {% for error in form.expected_change.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
 
-            <div class="mb-3 d-none" id="traffic-other-wrap">
-              <label class="form-label">{{ form.traffic_volume_other.label }}</label>
-              {{ form.traffic_volume_other }}
-              {% for error in form.traffic_volume_other.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
+              <div class="col-12">
+                <label class="form-label">{{ form.hypothesis.label }}</label>
+                {{ form.hypothesis }}
+                <div class="form-text">
+                  Формат: если мы [изменение], то [метрика] вырастет или снизится, потому что [инсайт].
+                </div>
+                {% for error in form.hypothesis.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
 
-            <div class="mb-3">
-              <label class="form-label">{{ form.test_duration.label }}</label>
-              {{ form.test_duration }}
-              {% for error in form.test_duration.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.traffic_volume.label }}</label>
+                {{ form.traffic_volume }}
+                {% for error in form.traffic_volume.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
 
-            <div class="mb-3 d-none" id="duration-users-wrap">
-              <label class="form-label">{{ form.duration_users.label }}</label>
-              {{ form.duration_users }}
-              {% for error in form.duration_users.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            </div>
+              <div class="col-12 col-lg-6 d-none" id="traffic-other-wrap">
+                <label class="form-label">{{ form.traffic_volume_other.label }}</label>
+                {{ form.traffic_volume_other }}
+                {% for error in form.traffic_volume_other.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
 
-            <div class="mb-0 d-none" id="duration-date-wrap">
-              <label class="form-label">{{ form.duration_end_date.label }}</label>
-              {{ form.duration_end_date }}
-              {% for error in form.duration_end_date.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.test_duration.label }}</label>
+                {{ form.test_duration }}
+                {% for error in form.test_duration.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-lg-6 d-none" id="duration-users-wrap">
+                <label class="form-label">{{ form.duration_users.label }}</label>
+                {{ form.duration_users }}
+                {% for error in form.duration_users.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-lg-6 d-none" id="duration-date-wrap">
+                <label class="form-label">{{ form.duration_end_date.label }}</label>
+                {{ form.duration_end_date }}
+                {% for error in form.duration_end_date.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-md-6 col-xl-4">
+                <label class="form-label">{{ form.start_date.label }}</label>
+                {{ form.start_date }}
+                {% for error in form.start_date.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-md-6 col-xl-4">
+                <label class="form-label">{{ form.end_date.label }}</label>
+                {{ form.end_date }}
+                {% for error in form.end_date.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-xl-4">
+                <label class="form-label">{{ form.dashboard_url.label }}</label>
+                {{ form.dashboard_url }}
+                <div class="form-text">Можно оставить пустым и пользоваться общим dashboard.</div>
+                {% for error in form.dashboard_url.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.result_variant_a.label }}</label>
+                {{ form.result_variant_a }}
+                <div class="form-text">Итоговые цифры варианта A заносятся вручную из dashboard.</div>
+                {% for error in form.result_variant_a.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-lg-6">
+                <label class="form-label">{{ form.result_variant_b.label }}</label>
+                {{ form.result_variant_b }}
+                <div class="form-text">Итоговые цифры варианта B заносятся вручную из dashboard.</div>
+                {% for error in form.result_variant_b.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-md-6">
-        <label class="form-label">{{ form.status.label }}</label>
-        {{ form.status }}
-      </div>
       <div class="col-12">
         <label class="form-label">{{ form.comment.label }}</label>
         {{ form.comment }}
+        {% for error in form.comment.errors %}
+          <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
       </div>
 
-      <div class="col-12">
-        <button class="btn btn-primary">Создать эксперимент</button>
+      <div class="col-12 d-flex flex-wrap gap-2">
+        <button class="btn btn-primary">
+          {% if editing_experiment %}Сохранить изменения{% else %}Создать эксперимент{% endif %}
+        </button>
+        {% if editing_experiment %}
+          <a href="{% url 'experiments_board' %}" class="btn btn-outline-secondary">Отмена</a>
+        {% endif %}
       </div>
     </form>
   </div>
 </div>
 
-<div class="row g-3">
-  {% for experiment in experiments %}
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h5 class="mb-0">
-              {{ experiment.item.title|default:"Эксперимент" }}
-            </h5>
-            <span class="badge text-bg-info">{{ experiment.item.get_status_display }}</span>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h3 class="h5 mb-1">Канбан экспериментов</h3>
+    <div class="text-muted small">Финальное решение выбирается кнопками, технические статусы показывают этап работы.</div>
+  </div>
+  <div class="text-muted small">После финализации карточка уходит в библиотеку гипотез ниже.</div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for column in active_columns %}
+    <div class="col-12 col-xl-3">
+      <div class="card shadow-sm experiment-column h-100">
+        <div class="card-header bg-{{ column.color }} {% if column.color == 'warning' %}text-dark{% else %}text-white{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <b>{{ column.title }}</b>
+            <span class="badge text-bg-light">{{ column.items|length }}</span>
           </div>
-          <div class="small text-muted mb-2">
-            #{{ experiment.item.id }} • {{ experiment.item.created_at|date:"d.m.Y H:i" }} • {{ experiment.item.created_by.username|default:"-" }}
-          </div>
+        </div>
+        <div class="card-body d-flex flex-column gap-3">
+          {% for experiment in column.items %}
+            <div class="card experiment-item shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                  <div>
+                    <h5 class="mb-1">{{ experiment.item.title|default:"Эксперимент" }}</h5>
+                    <div class="small text-muted">
+                      #{{ experiment.item.id }} • {{ experiment.item.created_at|date:"d.m.Y H:i" }} • {{ experiment.item.created_by.username|default:"-" }}
+                    </div>
+                  </div>
+                  <span class="badge {% if experiment.item.wants_ab_test %}text-bg-dark{% else %}text-bg-secondary{% endif %}">
+                    {% if experiment.item.wants_ab_test %}A/B{% else %}Без A/B{% endif %}
+                  </span>
+                </div>
 
-          <div class="small mb-1"><b>АБ тест:</b> {% if experiment.item.wants_ab_test %}Да{% else %}Нет{% endif %}</div>
-          {% if experiment.item.wants_ab_test %}
-            <div class="small mb-1"><b>Варианты:</b> {{ experiment.ab_option_labels|join:", " }}</div>
-            {% if experiment.item.ab_test_custom_option %}
-              <div class="small mb-1"><b>Свой вариант:</b> {{ experiment.item.ab_test_custom_option }}</div>
-            {% endif %}
-            <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
-            <div class="small mb-1"><b>Ожидаемое изменение:</b> {{ experiment.item.expected_change|default:"-" }}</div>
-            <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
-            <div class="small mb-1"><b>Объем трафика:</b> {{ experiment.item.get_traffic_volume_display|default:"-" }}</div>
-            {% if experiment.item.traffic_volume_other %}
-              <div class="small mb-1"><b>Объем (другое):</b> {{ experiment.item.traffic_volume_other }}</div>
-            {% endif %}
-            <div class="small mb-1"><b>Длительность:</b> {{ experiment.item.get_test_duration_display|default:"-" }}</div>
-            {% if experiment.item.duration_users %}
-              <div class="small mb-1"><b>X пользователей:</b> {{ experiment.item.duration_users }}</div>
-            {% endif %}
-            {% if experiment.item.duration_end_date %}
-              <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.duration_end_date|date:"d.m.Y" }}</div>
-            {% endif %}
-          {% endif %}
+                {% if experiment.item.wants_ab_test %}
+                  {% if experiment.ab_option_labels %}
+                    <div class="small mb-1"><b>Варианты:</b> {{ experiment.ab_option_labels|join:", " }}</div>
+                  {% endif %}
+                  {% if experiment.item.ab_test_custom_option %}
+                    <div class="small mb-1"><b>Свой вариант:</b> {{ experiment.item.ab_test_custom_option }}</div>
+                  {% endif %}
+                  <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
+                  <div class="small mb-1"><b>Ожидаемое изменение:</b> {{ experiment.item.expected_change|default:"-" }}</div>
+                  <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
+                  <div class="small mb-1"><b>Объем трафика:</b> {{ experiment.item.get_traffic_volume_display|default:"-" }}</div>
+                  {% if experiment.item.traffic_volume_other %}
+                    <div class="small mb-1"><b>Объем трафика, другое:</b> {{ experiment.item.traffic_volume_other }}</div>
+                  {% endif %}
+                  <div class="small mb-1"><b>Плановая длительность:</b> {{ experiment.item.get_test_duration_display|default:"-" }}</div>
+                  {% if experiment.item.duration_users %}
+                    <div class="small mb-1"><b>До пользователей:</b> {{ experiment.item.duration_users }}</div>
+                  {% endif %}
+                  {% if experiment.item.duration_end_date %}
+                    <div class="small mb-1"><b>Плановое завершение:</b> {{ experiment.item.duration_end_date|date:"d.m.Y" }}</div>
+                  {% endif %}
+                  <div class="small mb-1"><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y"|default:"-" }}</div>
+                  <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y"|default:"-" }}</div>
+                  {% if experiment.item.result_variant_a %}
+                    <div class="small mb-1 experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a }}</div>
+                  {% endif %}
+                  {% if experiment.item.result_variant_b %}
+                    <div class="small mb-1 experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b }}</div>
+                  {% endif %}
+                {% endif %}
 
-          {% if experiment.item.comment %}
-            <div class="small mt-2"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
-          {% endif %}
+                {% if experiment.item.comment %}
+                  <div class="small mt-2 experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
+                {% endif %}
 
-          <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="d-flex gap-2 mt-3">
-            {% csrf_token %}
-            <select class="form-select form-select-sm" name="status">
-              {% for value, label in status_choices %}
-                <option value="{{ value }}" {% if value == experiment.item.status %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-            <button class="btn btn-outline-primary btn-sm">Сохранить</button>
-          </form>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <a href="{% url 'experiments_board' %}?edit={{ experiment.item.id }}" class="btn btn-outline-dark btn-sm">Редактировать</a>
+                  <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Открыть dashboard</a>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                  {% if experiment.item.status == "backlog" %}
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="draft">
+                      <button class="btn btn-outline-primary btn-sm">В Draft</button>
+                    </form>
+                  {% elif experiment.item.status == "draft" %}
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="backlog">
+                      <button class="btn btn-outline-secondary btn-sm">В Backlog</button>
+                    </form>
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="in_progress">
+                      <button class="btn btn-outline-warning btn-sm">Запустить тест</button>
+                    </form>
+                  {% elif experiment.item.status == "in_progress" %}
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="draft">
+                      <button class="btn btn-outline-primary btn-sm">Вернуть в Draft</button>
+                    </form>
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="completed">
+                      <button class="btn btn-outline-dark btn-sm">На оценку</button>
+                    </form>
+                  {% elif experiment.item.status == "completed" %}
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="in_progress">
+                      <button class="btn btn-outline-warning btn-sm">Вернуть в тест</button>
+                    </form>
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="success">
+                      <button class="btn btn-success btn-sm">Успех</button>
+                    </form>
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="failed">
+                      <button class="btn btn-danger btn-sm">Провал</button>
+                    </form>
+                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="status" value="retest">
+                      <button class="btn btn-info btn-sm">Ретест</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% empty %}
+            <div class="experiment-empty text-muted small">В этой колонке пока нет экспериментов.</div>
+          {% endfor %}
         </div>
       </div>
     </div>
-  {% empty %}
-    <div class="col-12">
-      <div class="alert alert-light border">Экспериментов пока нет.</div>
+  {% endfor %}
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h3 class="h5 mb-1">Библиотека гипотез</h3>
+    <div class="text-muted small">Сюда попадают финализированные A/B тесты и исчезают из общего потока.</div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for column in library_columns %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm experiment-column h-100">
+        <div class="card-header bg-{{ column.color }} {% if column.color == 'info' %}text-dark{% else %}text-white{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <b>{{ column.title }}</b>
+            <span class="badge text-bg-light">{{ column.items|length }}</span>
+          </div>
+        </div>
+        <div class="card-body d-flex flex-column gap-3">
+          {% for experiment in column.items %}
+            <div class="card experiment-item shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                  <div>
+                    <h5 class="mb-1">{{ experiment.item.title|default:"Эксперимент" }}</h5>
+                    <div class="small text-muted">
+                      #{{ experiment.item.id }} • {{ experiment.item.updated_at|date:"d.m.Y H:i" }}
+                    </div>
+                  </div>
+                  <span class="badge text-bg-light">{{ experiment.item.get_status_display }}</span>
+                </div>
+
+                <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
+                <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
+                <div class="small mb-1"><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y"|default:"-" }}</div>
+                <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y"|default:"-" }}</div>
+                <div class="small mb-1 experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a|default:"-" }}</div>
+                <div class="small mb-1 experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b|default:"-" }}</div>
+                {% if experiment.item.comment %}
+                  <div class="small mt-2 experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
+                {% endif %}
+
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <a href="{% url 'experiments_board' %}?edit={{ experiment.item.id }}" class="btn btn-outline-dark btn-sm">Редактировать</a>
+                  <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Открыть dashboard</a>
+                  <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="completed">
+                    <button class="btn btn-outline-primary btn-sm">Вернуть на оценку</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% empty %}
+            <div class="experiment-empty text-muted small">Пока нет финализированных гипотез.</div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   {% endfor %}
 </div>
@@ -216,9 +440,12 @@
     const durationUsersWrap = document.getElementById("duration-users-wrap");
     const durationDateWrap = document.getElementById("duration-date-wrap");
     const customOptionWrap = document.getElementById("ab-custom-option-wrap");
-    const customVariantCheckbox = document.querySelector('input[name="ab_test_options"][value="custom"]');
 
     if (!wantsAB || !abFields) return;
+
+    function getCustomCheckbox() {
+      return document.querySelector('input[name="ab_test_options"][value="custom"]');
+    }
 
     function toggleABFields() {
       abFields.classList.toggle("d-none", !wantsAB.checked);
@@ -236,14 +463,17 @@
     }
 
     function toggleCustomOption() {
-      const show = !!(customVariantCheckbox && customVariantCheckbox.checked);
+      const checkbox = getCustomCheckbox();
+      const show = !!(checkbox && checkbox.checked);
       customOptionWrap.classList.toggle("d-none", !show);
     }
 
     wantsAB.addEventListener("change", toggleABFields);
     if (trafficSelect) trafficSelect.addEventListener("change", toggleTrafficOther);
     if (durationSelect) durationSelect.addEventListener("change", toggleDurationFields);
-    if (customVariantCheckbox) customVariantCheckbox.addEventListener("change", toggleCustomOption);
+    document.querySelectorAll('input[name="ab_test_options"]').forEach((item) => {
+      item.addEventListener("change", toggleCustomOption);
+    });
 
     toggleABFields();
     toggleTrafficOther();

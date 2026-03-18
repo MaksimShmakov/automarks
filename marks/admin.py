@@ -85,6 +85,6 @@ class TaskRequestAdmin(admin.ModelAdmin):
 
 @admin.register(Experiment)
 class ExperimentAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "status", "wants_ab_test", "created_by", "created_at", "updated_at")
+    list_display = ("id", "title", "status", "start_date", "end_date", "wants_ab_test", "created_by", "created_at", "updated_at")
     list_filter = ("status", "wants_ab_test", "traffic_volume", "test_duration")
-    search_fields = ("title", "metric_impact", "expected_change", "hypothesis", "comment")
+    search_fields = ("title", "metric_impact", "expected_change", "hypothesis", "comment", "result_variant_a", "result_variant_b")

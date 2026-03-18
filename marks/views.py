@@ -40,8 +40,8 @@ from .forms import (
     MailingTaskRequestForm,
     BuildTaskRequestForm,
     TaskStatusForm,
-    ExperimentForm,
 )
+from .experiment_forms import ExperimentForm
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import (
     notify_new_task,
@@ -1449,7 +1449,7 @@ def telegram_webhook(request, webhook_key):
 
 @login_required
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
-def experiments_board(request):
+def _legacy_experiments_board(request):
     if request.method == "POST":
         form = ExperimentForm(request.POST)
         if form.is_valid():
@@ -1487,12 +1487,144 @@ def experiments_board(request):
 @login_required
 @require_POST
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def _legacy_update_experiment_status(request, experiment_id):
+    experiment = get_object_or_404(Experiment, id=experiment_id)
+    status_value = (request.POST.get("status") or "").strip()
+    if status_value not in Experiment.Status.values:
+        messages.error(request, "Недопустимый статус эксперимента.")
+        return redirect("experiments_board")
+
+    if experiment.status == status_value:
+        messages.info(request, "Статус эксперимента не изменился.")
+        return redirect("experiments_board")
+
+    experiment.status = status_value
+    experiment.save(update_fields=["status", "updated_at"])
+    messages.success(request, "Статус эксперимента обновлен.")
+    return redirect("experiments_board")
+
+
+EXPERIMENT_ACTIVE_COLUMNS = [
+    {"status": Experiment.Status.BACKLOG, "title": "Backlog", "color": "secondary"},
+    {"status": Experiment.Status.DRAFT, "title": "Draft", "color": "primary"},
+    {"status": Experiment.Status.IN_PROGRESS, "title": "В тесте", "color": "warning"},
+    {"status": Experiment.Status.COMPLETED, "title": "На оценке", "color": "dark"},
+]
+
+EXPERIMENT_LIBRARY_COLUMNS = [
+    {"status": Experiment.Status.SUCCESS, "title": "Успех", "color": "success"},
+    {"status": Experiment.Status.FAILED, "title": "Провал", "color": "danger"},
+    {"status": Experiment.Status.RETEST, "title": "Ретест", "color": "info"},
+]
+
+EXPERIMENT_FINAL_STATUSES = {column["status"] for column in EXPERIMENT_LIBRARY_COLUMNS}
+
+
+def _build_experiment_card(experiment, option_labels, default_dashboard_url):
+    selected_options = experiment.ab_test_options or []
+    return {
+        "item": experiment,
+        "ab_option_labels": [option_labels.get(code, code) for code in selected_options],
+        "dashboard_href": experiment.dashboard_url or default_dashboard_url,
+    }
+
+
+def _experiments_board_context(form, editing_experiment=None):
+    option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
+    default_dashboard_url = reverse("dashboard")
+
+    active_columns = [{**column, "items": []} for column in EXPERIMENT_ACTIVE_COLUMNS]
+    library_columns = [{**column, "items": []} for column in EXPERIMENT_LIBRARY_COLUMNS]
+    active_map = {column["status"]: column for column in active_columns}
+    library_map = {column["status"]: column for column in library_columns}
+
+    for experiment in Experiment.objects.select_related("created_by").all():
+        card = _build_experiment_card(
+            experiment=experiment,
+            option_labels=option_labels,
+            default_dashboard_url=default_dashboard_url,
+        )
+        if experiment.status in active_map:
+            active_map[experiment.status]["items"].append(card)
+        elif experiment.status in library_map:
+            library_map[experiment.status]["items"].append(card)
+
+    return {
+        "form": form,
+        "editing_experiment": editing_experiment,
+        "active_columns": active_columns,
+        "library_columns": library_columns,
+        "default_dashboard_url": default_dashboard_url,
+    }
+
+
+@login_required
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def experiments_board(request):
+    editing_experiment = None
+    edit_id = (request.GET.get("edit") or "").strip()
+
+    if request.method == "POST":
+        experiment_id = (request.POST.get("experiment_id") or "").strip()
+        if experiment_id:
+            editing_experiment = get_object_or_404(Experiment, id=experiment_id)
+            form = ExperimentForm(request.POST, instance=editing_experiment)
+        else:
+            form = ExperimentForm(request.POST)
+
+        if form.is_valid():
+            experiment = form.save(commit=False)
+            is_update = experiment.pk is not None
+            if not is_update:
+                experiment.created_by = request.user
+            experiment.save()
+            messages.success(
+                request,
+                "Эксперимент обновлен." if is_update else "Эксперимент создан.",
+            )
+            return redirect("experiments_board")
+
+        messages.error(request, "Не удалось сохранить эксперимент. Проверьте заполнение полей.")
+    else:
+        if edit_id.isdigit():
+            editing_experiment = get_object_or_404(Experiment, id=edit_id)
+            form = ExperimentForm(instance=editing_experiment)
+        else:
+            form = ExperimentForm()
+
+    return render(
+        request,
+        "marks/experiments_board.html",
+        _experiments_board_context(form=form, editing_experiment=editing_experiment),
+    )
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def update_experiment_status(request, experiment_id):
     experiment = get_object_or_404(Experiment, id=experiment_id)
     status_value = (request.POST.get("status") or "").strip()
     if status_value not in Experiment.Status.values:
         messages.error(request, "Недопустимый статус эксперимента.")
         return redirect("experiments_board")
+
+    if status_value in EXPERIMENT_FINAL_STATUSES:
+        missing_fields = []
+        if not experiment.start_date:
+            missing_fields.append("дату старта")
+        if not experiment.end_date:
+            missing_fields.append("дату окончания")
+        if not (experiment.result_variant_a or "").strip():
+            missing_fields.append("данные варианта A")
+        if not (experiment.result_variant_b or "").strip():
+            missing_fields.append("данные варианта B")
+        if missing_fields:
+            messages.error(
+                request,
+                f"Перед финальным решением заполните: {', '.join(missing_fields)}.",
+            )
+            return redirect("experiments_board")
 
     if experiment.status == status_value:
         messages.info(request, "Статус эксперимента не изменился.")

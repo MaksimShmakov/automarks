@@ -363,7 +363,7 @@ class TaskStatusForm(forms.ModelForm):
         widgets = {"status": forms.Select(attrs={"class": "form-select form-select-sm"})}
 
 
-class ExperimentForm(forms.ModelForm):
+class LegacyExperimentForm(forms.ModelForm):
     AB_TEST_OPTIONS = [
         ("start", "Стартовый"),
         ("segmentation", "Сегментация"),
