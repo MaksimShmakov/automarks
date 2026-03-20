@@ -562,6 +562,96 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertIn("test_bot_name", first_data_row)
 
 
+class BotPlatformTests(TaskBoardBaseTestCase):
+    def test_default_telegram_tag_uses_start_link(self):
+        tag = self.branch_main.tags.get(url__isnull=False)
+
+        self.assertEqual(tag.url, "https://t.me/test_bot_name?start=MN0001")
+
+    def test_vk_tag_uses_group_ref_link(self):
+        vk_bot = Bot.objects.create(
+            name="203482421",
+            display_name="VK Sales",
+            platform=Bot.Platform.VK,
+            product=self.product,
+        )
+        branch = Branch.objects.create(bot=vk_bot, name="Main", code="VK")
+        tag = branch.tags.get(url__isnull=False)
+
+        self.assertEqual(tag.url, "https://vk.com/write-203482421?ref=VK0001")
+
+    def test_bot_api_finds_vk_bot_by_group_id(self):
+        vk_bot = Bot.objects.create(
+            name="203482421",
+            display_name="VK Sales",
+            platform=Bot.Platform.VK,
+            product=self.product,
+        )
+        Branch.objects.create(bot=vk_bot, name="Main", code="VK")
+
+        response = self.client.get(reverse("bot_api", kwargs={"bot_name": "203482421"}))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["bot"], "203482421")
+        self.assertEqual(payload["branches"][0]["tags"][0]["url"], "https://vk.com/write-203482421?ref=VK0001")
+
+    def test_bot_api_accepts_telegram_name_with_at_prefix(self):
+        response = self.client.get(reverse("bot_api", kwargs={"bot_name": "@test_bot_name"}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["bot"], "test_bot_name")
+
+    def test_bots_list_creates_telegram_bot_and_strips_at_sign(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("bots_list"),
+            {
+                "form_type": "telegram",
+                "tg-name": "@new_bot",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        bot = Bot.objects.get(name="new_bot")
+        self.assertEqual(bot.platform, Bot.Platform.TELEGRAM)
+        self.assertEqual(bot.display_name, "")
+
+    def test_bots_list_creates_vk_bot_with_display_name(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("bots_list"),
+            {
+                "form_type": "vk",
+                "vk-name": "203482421",
+                "vk-display_name": "VK Sales",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        bot = Bot.objects.get(name="203482421")
+        self.assertEqual(bot.platform, Bot.Platform.VK)
+        self.assertEqual(bot.display_name, "VK Sales")
+
+    def test_bots_list_sorts_telegram_before_vk(self):
+        Bot.objects.create(name="zzz_bot", product=self.product)
+        Bot.objects.create(
+            name="203482421",
+            display_name="Alpha VK",
+            platform=Bot.Platform.VK,
+            product=self.product,
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("bots_list"))
+
+        self.assertEqual(response.status_code, 200)
+        ordered_platforms = [bot.platform for bot in response.context["active_bots"]]
+        self.assertEqual(ordered_platforms[:3], [Bot.Platform.TELEGRAM, Bot.Platform.TELEGRAM, Bot.Platform.VK])
+
+
 class ExperimentBoardTests(TaskBoardBaseTestCase):
     def setUp(self):
         super().setUp()

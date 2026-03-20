@@ -17,8 +17,14 @@ class Product(models.Model):
 
 
 class Bot(models.Model):
+    class Platform(models.TextChoices):
+        TELEGRAM = "tg", "Telegram"
+        VK = "vk", "VK"
+
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="bots")
+    platform = models.CharField(max_length=10, choices=Platform.choices, default=Platform.TELEGRAM)
     name = models.CharField(max_length=255, unique=True)
+    display_name = models.CharField(max_length=255, blank=True, default="")
     description = models.TextField(blank=True, default="")
     salebot_url = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -26,7 +32,41 @@ class Bot(models.Model):
 
 
     def __str__(self):
-        return self.name
+        return self.title
+
+    @property
+    def api_name(self):
+        return (self.name or "").strip()
+
+    @property
+    def title(self):
+        return (self.display_name or self.api_name).strip()
+
+    @property
+    def ui_identifier(self):
+        identifier = self.api_name.lstrip("@")
+        if self.platform == self.Platform.VK:
+            return identifier
+        return f"@{identifier}" if identifier else ""
+
+    @property
+    def sort_key(self):
+        return (self.title or self.api_name).casefold()
+
+    @property
+    def platform_order(self):
+        order = {
+            self.Platform.TELEGRAM: 0,
+            self.Platform.VK: 1,
+        }
+        return order.get(self.platform, 99)
+
+    def build_tag_url(self, tag_number):
+        tag_number = str(tag_number or "").strip()
+        identifier = self.api_name.lstrip("@")
+        if self.platform == self.Platform.VK:
+            return f"https://vk.com/write-{identifier}?ref={tag_number}"
+        return f"https://t.me/{identifier}?start={tag_number}"
 
 
 class PlanMonthly(models.Model):
@@ -140,7 +180,7 @@ class Branch(models.Model):
 
 
     def __str__(self):
-        return f"{self.bot.name} - {self.name} ({self.code})"
+        return f"{self.bot.title} - {self.name} ({self.code})"
 
 
 class TaskRequest(models.Model):
@@ -185,7 +225,7 @@ class TaskRequest(models.Model):
 
     @staticmethod
     def _bot_branch_label(branch):
-        bot_name = (getattr(getattr(branch, "bot", None), "name", "") or "").strip()
+        bot_name = (getattr(getattr(branch, "bot", None), "title", "") or "").strip()
         branch_name = (getattr(branch, "name", "") or "").strip()
         if not bot_name:
             return ""
@@ -315,7 +355,7 @@ class Tag(models.Model):
 
 
         if not self.url:
-            self.url = f"https://t.me/{self.branch.bot.name}?start={self.number}"
+            self.url = self.branch.bot.build_tag_url(self.number)
 
 
         super().save(*args, **kwargs)

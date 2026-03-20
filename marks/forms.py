@@ -104,6 +104,64 @@ class BotForm(forms.ModelForm):
         model = Bot
         fields = ["name"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].label = "Username бота"
+        self.fields["name"].widget.attrs["placeholder"] = "@new_bot"
+
+    def clean_name(self):
+        value = " ".join((self.cleaned_data.get("name") or "").strip().split())
+        value = value.lstrip("@")
+        if not value:
+            raise forms.ValidationError("Укажите username бота.")
+        if re.fullmatch(r"[A-Za-z0-9_]{5,32}", value) is None:
+            raise forms.ValidationError("Username Telegram должен содержать 5-32 символа: буквы, цифры и _.")
+        return value
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.platform = Bot.Platform.TELEGRAM
+        obj.display_name = ""
+        if commit:
+            obj.save()
+        return obj
+
+
+class VKBotForm(forms.ModelForm):
+    class Meta:
+        model = Bot
+        fields = ["name", "display_name"]
+        labels = {
+            "name": "ID группы",
+            "display_name": "Название",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].widget.attrs["placeholder"] = "203482421"
+        self.fields["display_name"].widget.attrs["placeholder"] = "VK бот курса"
+
+    def clean_name(self):
+        value = "".join((self.cleaned_data.get("name") or "").split())
+        if not value:
+            raise forms.ValidationError("Укажите ID группы VK.")
+        if re.fullmatch(r"\d{3,32}", value) is None:
+            raise forms.ValidationError("ID группы VK должен состоять только из цифр.")
+        return value
+
+    def clean_display_name(self):
+        value = " ".join((self.cleaned_data.get("display_name") or "").strip().split())
+        if not value:
+            raise forms.ValidationError("Укажите название для страницы ботов.")
+        return value
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.platform = Bot.Platform.VK
+        if commit:
+            obj.save()
+        return obj
+
 
 class BotDetailsForm(forms.ModelForm):
     class Meta:
@@ -178,10 +236,15 @@ class BaseTaskRequestForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         def branch_label(obj):
-            return f"{obj.bot.name} / {obj.name} ({obj.code})"
+            return f"{obj.bot.title} / {obj.name} ({obj.code})"
         for name, field in self.fields.items():
             if name == "branches":
-                field.queryset = Branch.objects.select_related("bot").order_by("bot__name", "name")
+                field.queryset = Branch.objects.select_related("bot").order_by(
+                    "bot__platform",
+                    "bot__display_name",
+                    "bot__name",
+                    "name",
+                )
                 field.label_from_instance = branch_label
                 field.widget = forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"})
                 if field.queryset.exists():

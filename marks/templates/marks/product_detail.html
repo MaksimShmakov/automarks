@@ -8,13 +8,15 @@
   <a class="btn btn-sm btn-outline-secondary" href="{% url 'funnel_create' %}">+ Воронка</a>
   <a class="btn btn-sm btn-outline-success" href="{% url 'traffic_create' %}">+ Отчёт по трафику</a>
   <a class="btn btn-sm btn-outline-dark" href="{% url 'patch_create' %}?next={{ request.path }}">+ Патчноут</a>
-  </div>
+</div>
 
 <h5>Планы</h5>
 <ul>
   {% for pl in plans %}
     <li>{{ pl.month|date:"Y-m" }} — бюджет {{ pl.budget }}; выручка (план) {{ pl.revenue_target }}</li>
-  {% empty %}<li class="text-muted">Нет планов</li>{% endfor %}
+  {% empty %}
+    <li class="text-muted">Нет планов</li>
+  {% endfor %}
 </ul>
 
 <h5>Воронки</h5>
@@ -23,7 +25,7 @@
     <li>воронка — {{ f.name }}{% if f.description %} — {{ f.description }}{% endif %}</li>
   {% empty %}{% endfor %}
   {% for b in bots %}
-    <li>бот — <a href="{% url 'branches_list' b.id %}">{{ b.name }}</a></li>
+    <li>бот — <a href="{% url 'branches_list' b.id %}">{{ b.title }}</a> ({{ b.get_platform_display }})</li>
   {% empty %}{% endfor %}
   {% if not funnels and not bots %}
     <li class="text-muted">Нет воронок</li>
@@ -34,6 +36,8 @@
 <ul>
   {% for t in traffic %}
     <li>{{ t.month|date:"Y-m" }} · {{ t.get_platform_display }} · {{ t.vendor }} — {{ t.spend }} ₽</li>
-  {% empty %}<li class="text-muted">Отчётов нет</li>{% endfor %}
+  {% empty %}
+    <li class="text-muted">Отчётов нет</li>
+  {% endfor %}
 </ul>
 {% endblock %}

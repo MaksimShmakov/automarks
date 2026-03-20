@@ -55,7 +55,7 @@
         <select name="bot_id" class="form-select form-select-sm">
           <option value="">Все</option>
           {% for bot in bot_filter_options %}
-            <option value="{{ bot.id }}" {% if filter_values.bot_id == bot.id|stringformat:"s" %}selected{% endif %}>{{ bot.name }}</option>
+            <option value="{{ bot.id }}" {% if filter_values.bot_id == bot.id|stringformat:"s" %}selected{% endif %}>{{ bot.title }} ({{ bot.get_platform_display }})</option>
           {% endfor %}
         </select>
       </div>
@@ -139,7 +139,7 @@
                     {% if branch.id|stringformat:"s" in patch_selected_branch_ids %}checked{% endif %}
                   >
                   <label class="form-check-label" for="id_{{ patch_form.prefix }}-branches-{{ branch.id }}">
-                    {{ branch.bot.name }} / {{ branch.name }} ({{ branch.code }})
+                    {{ branch.bot.title }} / {{ branch.name }} ({{ branch.code }})
                   </label>
                 </div>
               {% empty %}
@@ -214,7 +214,7 @@
                     {% if branch.id|stringformat:"s" in mailing_selected_branch_ids %}checked{% endif %}
                   >
                   <label class="form-check-label" for="id_{{ mailing_form.prefix }}-branches-{{ branch.id }}">
-                    {{ branch.bot.name }} / {{ branch.name }} ({{ branch.code }})
+                    {{ branch.bot.title }} / {{ branch.name }} ({{ branch.code }})
                   </label>
                 </div>
               {% empty %}

@@ -30,6 +30,7 @@ from reportlab.pdfgen import canvas
 from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest, Experiment
 from .forms import (
     BotForm,
+    VKBotForm,
     BotStatusForm,
     BotDetailsForm,
     BranchForm,
@@ -80,6 +81,15 @@ def get_user_role(user):
 
 def get_role_home_view_name(user):
     return "dashboard"
+
+
+def _bot_sort_tuple(bot):
+    created_at = getattr(bot, "created_at", None) or timezone.now()
+    return (bot.platform_order, bot.sort_key, created_at)
+
+
+def _branch_sort_tuple(branch):
+    return (_bot_sort_tuple(branch.bot), (branch.name or "").casefold(), (branch.code or "").casefold())
 
 def _active_tags_qs(tags_qs):
     return tags_qs.filter(url__isnull=False)
@@ -433,9 +443,21 @@ def register(request):
 
 
 def bot_api(request, bot_name):
+    normalized_name = (bot_name or "").strip()
     try:
-        bot = Bot.objects.get(name=bot_name)
+        bot = Bot.objects.get(name=normalized_name)
     except Bot.DoesNotExist:
+        if normalized_name.startswith("@"):
+            try:
+                telegram_bot = Bot.objects.get(
+                    name=normalized_name.lstrip("@"),
+                    platform=Bot.Platform.TELEGRAM,
+                )
+            except Bot.DoesNotExist:
+                telegram_bot = None
+            if telegram_bot is not None:
+                return bot_api(request, normalized_name.lstrip("@"))
+            return JsonResponse({"error": "Bot not found"}, status=404)
         return JsonResponse({"error": "Бот не найден"}, status=404)
 
 
@@ -507,23 +529,37 @@ def bot_api(request, bot_name):
 @login_required
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def bots_list(request):
-    bots = Bot.objects.all().annotate(branches_total=Count("branches"))
-    active_bots = bots.filter(is_active=True).order_by("name", "created_at")
-    inactive_bots = bots.filter(is_active=False).order_by("name", "created_at")
+    bots = list(Bot.objects.all().annotate(branches_total=Count("branches")))
+    bots.sort(key=_bot_sort_tuple)
+    active_bots = [bot for bot in bots if bot.is_active]
+    inactive_bots = [bot for bot in bots if not bot.is_active]
     if request.method == "POST":
-        form = BotForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect("bots_list")
+        form_type = (request.POST.get("form_type") or "telegram").strip()
+        telegram_form = BotForm(prefix="tg")
+        vk_form = VKBotForm(prefix="vk")
+        if form_type == "vk":
+            vk_form = VKBotForm(request.POST, prefix="vk")
+            if vk_form.is_valid():
+                vk_form.save()
+                messages.success(request, "VK бот создан.")
+                return redirect("bots_list")
+        else:
+            telegram_form = BotForm(request.POST, prefix="tg")
+            if telegram_form.is_valid():
+                telegram_form.save()
+                messages.success(request, "Telegram бот создан.")
+                return redirect("bots_list")
     else:
-        form = BotForm()
+        telegram_form = BotForm(prefix="tg")
+        vk_form = VKBotForm(prefix="vk")
     return render(
         request,
         "marks/bots_list.html",
         {
             "active_bots": active_bots,
             "inactive_bots": inactive_bots,
-            "form": form,
+            "telegram_form": telegram_form,
+            "vk_form": vk_form,
         },
     )
 
@@ -532,7 +568,10 @@ def bots_list(request):
 @require_roles('admin', 'manager', 'marketer', UserProfile.Role.BOT_USER)
 def branches_list(request, bot_id):
     bot = get_object_or_404(Bot, id=bot_id)
-    branches = bot.branches.all()
+    branches = sorted(
+        bot.branches.all(),
+        key=lambda branch: ((branch.name or "").casefold(), (branch.code or "").casefold()),
+    )
     patchnotes = PatchNote.objects.filter(branch__bot=bot).select_related("branch")
     bot_status_form = BotStatusForm(bot=bot)
     bot_details_form = BotDetailsForm(instance=bot)
@@ -1079,7 +1118,7 @@ def _tasks_board_context(
     filter_values=None,
     current_user=None,
 ):
-    branch_options = list(Branch.objects.select_related("bot").order_by("bot__name", "name"))
+    branch_options = sorted(Branch.objects.select_related("bot"), key=_branch_sort_tuple)
     branch_total = len(branch_options)
     patch_form = patch_form or PatchTaskRequestForm(prefix="patch")
     mailing_form = mailing_form or MailingTaskRequestForm(prefix="mailing")
@@ -1106,7 +1145,7 @@ def _tasks_board_context(
         "completed_to_raw": "",
     }
 
-    bot_filter_options = list(Bot.objects.filter(branches__isnull=False).distinct().order_by("name"))
+    bot_filter_options = sorted(Bot.objects.filter(branches__isnull=False).distinct(), key=_bot_sort_tuple)
     completed_tasks_count = sum(1 for task in tasks if task.status == TaskRequest.Status.DONE and task.completed_at)
     done_tasks = [task for task in tasks if task.status == TaskRequest.Status.DONE and task.completed_at]
     completed_type_counters = {

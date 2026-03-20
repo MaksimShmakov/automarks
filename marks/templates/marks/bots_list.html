@@ -31,9 +31,13 @@
           <div class="col">
             <div class="card shadow-sm h-100">
               <div class="card-body">
-                <h5 class="card-title">
-                  <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
-                </h5>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                  <h5 class="card-title mb-0">
+                    <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.title }}</a>
+                  </h5>
+                  <span class="badge text-bg-light">{{ bot.get_platform_display }}</span>
+                </div>
+                <div class="small text-muted mb-1">API ID: {{ bot.ui_identifier }}</div>
                 <p class="text-muted mb-0">Веток: {{ bot.branches_total }}</p>
               </div>
             </div>
@@ -74,9 +78,13 @@
           <div class="col">
             <div class="card shadow-sm h-100 border-0 border-start border-4 border-warning">
               <div class="card-body">
-                <h5 class="card-title">
-                  <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.name }}</a>
-                </h5>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                  <h5 class="card-title mb-0">
+                    <a href="{% url 'branches_list' bot.id %}" class="text-decoration-none">{{ bot.title }}</a>
+                  </h5>
+                  <span class="badge text-bg-light">{{ bot.get_platform_display }}</span>
+                </div>
+                <div class="small text-muted mb-1">API ID: {{ bot.ui_identifier }}</div>
                 <p class="text-muted mb-0">Веток: {{ bot.branches_total }}</p>
               </div>
             </div>
@@ -91,22 +99,63 @@
   </div>
 </div>
 
-<div class="card shadow-sm">
-  <div class="card-header bg-light">
-    <h5 class="mb-0">Создать бота</h5>
+<div class="row g-4">
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-light">
+        <h5 class="mb-0">Создать Telegram-бота</h5>
+      </div>
+      <div class="card-body">
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <input type="hidden" name="form_type" value="telegram">
+          <div class="col-12">
+            <label class="form-label">{{ telegram_form.name.label }}</label>
+            {{ telegram_form.name|add_class:"form-control" }}
+            <div class="form-text">Можно вводить с @ или без. В API и ссылках будет использоваться username без @.</div>
+            {% for error in telegram_form.name.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Создать Telegram-бота</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
-  <div class="card-body">
-    <form method="post" class="row g-3">
-      {% csrf_token %}
-      <div class="col-md-6">
-        <label class="form-label">Название бота</label>
-        {{ form.name|add_class:"form-control" }}
-        <div class="form-text">Имя бота должно четко совпадать с названием в Telegram (без @).</div>
+
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-light">
+        <h5 class="mb-0">Создать VK-бота</h5>
       </div>
-      <div class="col-12">
-        <button type="submit" class="btn btn-primary">Создать</button>
+      <div class="card-body">
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <input type="hidden" name="form_type" value="vk">
+          <div class="col-12">
+            <label class="form-label">{{ vk_form.name.label }}</label>
+            {{ vk_form.name|add_class:"form-control" }}
+            <div class="form-text">Сюда нужен числовой `group`, который будет использоваться в API и ссылках.</div>
+            {% for error in vk_form.name.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ vk_form.display_name.label }}</label>
+            {{ vk_form.display_name|add_class:"form-control" }}
+            <div class="form-text">Любое читаемое название для страницы ботов и списков в интерфейсе.</div>
+            {% for error in vk_form.display_name.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-dark">Создать VK-бота</button>
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 {% endblock %}

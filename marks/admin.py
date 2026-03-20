@@ -24,9 +24,9 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(Bot)
 class BotAdmin(admin.ModelAdmin):
-    list_display = ("name", "product", "created_at")
-    list_filter = ("product",)
-    search_fields = ("name", "product__name")
+    list_display = ("title", "platform", "name", "product", "created_at")
+    list_filter = ("platform", "product")
+    search_fields = ("name", "display_name", "product__name")
 
 
 @admin.register(Branch)
