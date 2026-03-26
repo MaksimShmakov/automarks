@@ -54,7 +54,7 @@
 
 ### Формат ссылок в тегах
 - Telegram: `https://t.me/<bot_name>?start=<tag_number>`
-- VK: `https://vk.com/write-<group>?ref=<tag_number>`
+- VK: `https://vk.com/write-<group>?ref=<tag_number>&ref_source=<branch_number>`
 
 ### Ошибки
 - `404 {"error": "Bot not found"}` или локализованный аналог — бот с указанным идентификатором отсутствует

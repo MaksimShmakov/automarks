@@ -1,3 +1,6 @@
+import re
+from urllib.parse import urlencode
+
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -61,11 +64,14 @@ class Bot(models.Model):
         }
         return order.get(self.platform, 99)
 
-    def build_tag_url(self, tag_number):
+    def build_tag_url(self, tag_number, ref_source=None):
         tag_number = str(tag_number or "").strip()
         identifier = self.api_name.lstrip("@")
         if self.platform == self.Platform.VK:
-            return f"https://vk.com/write-{identifier}?ref={tag_number}"
+            params = {"ref": tag_number}
+            if ref_source not in {None, ""}:
+                params["ref_source"] = str(ref_source)
+            return f"https://vk.com/write-{identifier}?{urlencode(params)}"
         return f"https://t.me/{identifier}?start={tag_number}"
 
 
@@ -177,6 +183,13 @@ class Branch(models.Model):
 
     class Meta:
         unique_together = ("bot", "code")
+
+    @property
+    def ref_source(self):
+        match = re.search(r"(\d+)$", (self.code or "").strip())
+        if not match:
+            return None
+        return str(int(match.group(1)))
 
 
     def __str__(self):
@@ -343,6 +356,7 @@ class Tag(models.Model):
 
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
         if not self.number:
             prefix = self.branch.code
             last_tag = Tag.objects.filter(branch=self.branch).order_by("-number").first()
@@ -353,9 +367,11 @@ class Tag(models.Model):
                 new_num = "0001"
             self.number = f"{prefix}{new_num}"
 
-
-        if not self.url:
-            self.url = self.branch.bot.build_tag_url(self.number)
+        self.url = self.branch.bot.build_tag_url(self.number, self.branch.ref_source)
+        if update_fields is not None:
+            normalized_update_fields = set(update_fields)
+            normalized_update_fields.add("url")
+            kwargs["update_fields"] = list(normalized_update_fields)
 
 
         super().save(*args, **kwargs)

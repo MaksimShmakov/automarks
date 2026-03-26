@@ -575,10 +575,10 @@ class BotPlatformTests(TaskBoardBaseTestCase):
             platform=Bot.Platform.VK,
             product=self.product,
         )
-        branch = Branch.objects.create(bot=vk_bot, name="Main", code="VK")
+        branch = Branch.objects.create(bot=vk_bot, name="Main", code="ell23")
         tag = branch.tags.get(url__isnull=False)
 
-        self.assertEqual(tag.url, "https://vk.com/write-203482421?ref=VK0001")
+        self.assertEqual(tag.url, "https://vk.com/write-203482421?ref=ell230001&ref_source=23")
 
     def test_bot_api_finds_vk_bot_by_group_id(self):
         vk_bot = Bot.objects.create(
@@ -587,14 +587,14 @@ class BotPlatformTests(TaskBoardBaseTestCase):
             platform=Bot.Platform.VK,
             product=self.product,
         )
-        Branch.objects.create(bot=vk_bot, name="Main", code="VK")
+        Branch.objects.create(bot=vk_bot, name="Main", code="ell01")
 
         response = self.client.get(reverse("bot_api", kwargs={"bot_name": "203482421"}))
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["bot"], "203482421")
-        self.assertEqual(payload["branches"][0]["tags"][0]["url"], "https://vk.com/write-203482421?ref=VK0001")
+        self.assertEqual(payload["branches"][0]["tags"][0]["url"], "https://vk.com/write-203482421?ref=ell010001&ref_source=1")
 
     def test_bot_api_accepts_telegram_name_with_at_prefix(self):
         response = self.client.get(reverse("bot_api", kwargs={"bot_name": "@test_bot_name"}))
