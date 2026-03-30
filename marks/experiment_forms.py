@@ -93,6 +93,7 @@ class ExperimentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["wants_ab_test"].required = False
         self.fields["branch"].required = False
+        self.fields["branch"].label = "Ветка для API"
         self.fields["branch"].queryset = self.fields["branch"].queryset.select_related("bot").order_by(
             "bot__platform",
             "bot__display_name",
