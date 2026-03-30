@@ -15,11 +15,13 @@ from django.db.models import Sum, Count
 from django.utils import timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
+import hashlib
 import logging
 import json
 import re
 import csv
 import io
+import secrets
 from urllib.parse import urlencode
 import openpyxl
 from openpyxl.styles import Font, Alignment
@@ -107,6 +109,26 @@ def _set_last_tag_action(request, action, branch_id, payload):
         "payload": payload,
     }
     request.session.modified = True
+
+
+def _serialize_tag_for_api(tag, branch=None, include_ab_key=False):
+    payload = {
+        "number": tag.number,
+        "utm_source": tag.utm_source,
+        "utm_medium": tag.utm_medium,
+        "utm_campaign": tag.utm_campaign,
+        "utm_term": tag.utm_term,
+        "utm_content": tag.utm_content,
+        "budget": tag.budget,
+        "url": tag.url,
+    }
+    for field in TAG_UTM_FIELDS:
+        if not payload.get(field):
+            payload[field] = "None"
+
+    if include_ab_key:
+        payload["ab_key"] = _choose_branch_ab_key(branch or tag.branch)
+    return payload
 
 
 def _get_telegram_update_message(payload):
@@ -442,6 +464,59 @@ def register(request):
     return render(request, "registration/register.html", {"form": form})
 
 
+def _get_active_branch_api_experiment(branch):
+    today = timezone.localdate()
+    experiments = (
+        Experiment.objects.filter(
+            branch=branch,
+            wants_ab_test=True,
+            status=Experiment.Status.IN_PROGRESS,
+        )
+        .order_by("-updated_at", "-id")
+    )
+    for experiment in experiments:
+        if experiment.is_api_active(today):
+            return experiment
+    return None
+
+
+def _choose_branch_ab_key(branch):
+    experiment = _get_active_branch_api_experiment(branch)
+    if experiment is None:
+        return 1
+
+    weight_a, weight_b = experiment.get_traffic_split_weights()
+    total_weight = weight_a + weight_b
+    return 1 if secrets.randbelow(total_weight) < weight_a else 2
+
+
+def _build_branch_ab_payload(branch, assignment_key=""):
+    experiment = _get_active_branch_api_experiment(branch)
+    if experiment is None:
+        return {"active": False}
+
+    weight_a, weight_b = experiment.get_traffic_split_weights()
+    total_weight = weight_a + weight_b
+    assignment_key = (assignment_key or "").strip()
+    if assignment_key:
+        seed = f"{experiment.id}:{branch.id}:{assignment_key}".encode("utf-8")
+        bucket = int(hashlib.sha256(seed).hexdigest()[:16], 16) % total_weight
+        assignment_mode = "hash"
+    else:
+        bucket = secrets.randbelow(total_weight)
+        assignment_mode = "random"
+
+    variant_value = 1 if bucket < weight_a else 2
+    return {
+        "active": True,
+        "experiment_id": experiment.id,
+        "variant": "A" if variant_value == 1 else "B",
+        "variant_value": variant_value,
+        "split": f"{weight_a}/{weight_b}",
+        "assignment_mode": assignment_mode,
+    }
+
+
 def bot_api(request, bot_name):
     normalized_name = (bot_name or "").strip()
     try:
@@ -461,6 +536,9 @@ def bot_api(request, bot_name):
         return JsonResponse({"error": "Бот не найден"}, status=404)
 
 
+    branch_code = (request.GET.get("branch_code") or "").strip()
+    assignment_key = (request.GET.get("ab_key") or "").strip()
+
     filterable_fields = [
         "number",
         "utm_source",
@@ -475,31 +553,43 @@ def bot_api(request, bot_name):
         for field in filterable_fields
         if request.GET.get(field)
     }
+    number_only_request = bool(tag_filters) and set(tag_filters) == {"number"}
 
 
     data = {"bot": bot.name, "branches": []}
     filtered_tags = []
     branches_qs = bot.branches.all().prefetch_related("tags")
+    if branch_code:
+        branches_qs = branches_qs.filter(code__iexact=branch_code)
+        if not branches_qs.exists():
+            return JsonResponse({"error": "Branch not found"}, status=404)
+
     for branch in branches_qs:
         tags_qs = _active_tags_qs(branch.tags)
         if tag_filters:
             tags_qs = tags_qs.filter(**tag_filters)
-        tags_payload = list(
-            tags_qs.values(
-                "number",
-                "utm_source",
-                "utm_medium",
-                "utm_campaign",
-                "utm_term",
-                "utm_content",
-                "budget",
-                "url",
+        if number_only_request:
+            tags_payload = [
+                _serialize_tag_for_api(tag, branch=branch, include_ab_key=True)
+                for tag in tags_qs
+            ]
+        else:
+            tags_payload = list(
+                tags_qs.values(
+                    "number",
+                    "utm_source",
+                    "utm_medium",
+                    "utm_campaign",
+                    "utm_term",
+                    "utm_content",
+                    "budget",
+                    "url",
+                )
             )
-        )
-        for tag in tags_payload:
-            for field in utm_fields:
-                if not tag.get(field):
-                    tag[field] = "None"
+            for tag in tags_payload:
+                for field in utm_fields:
+                    if not tag.get(field):
+                        tag[field] = "None"
 
 
         if tag_filters:
@@ -512,6 +602,8 @@ def bot_api(request, bot_name):
             "code": branch.code,
             "tags": tags_payload,
         }
+        if branch_code:
+            branch_data["ab_test"] = _build_branch_ab_payload(branch, assignment_key=assignment_key)
         data["branches"].append(branch_data)
 
 
@@ -1503,7 +1595,7 @@ def _legacy_experiments_board(request):
 
     option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
     experiments = []
-    for experiment in Experiment.objects.select_related("created_by").all():
+    for experiment in Experiment.objects.select_related("created_by", "branch__bot").all():
         selected_options = experiment.ab_test_options or []
         experiments.append(
             {
@@ -1647,6 +1739,24 @@ def update_experiment_status(request, experiment_id):
     if status_value not in Experiment.Status.values:
         messages.error(request, "Недопустимый статус эксперимента.")
         return redirect("experiments_board")
+
+    if status_value == Experiment.Status.IN_PROGRESS and experiment.branch_id:
+        if experiment.get_traffic_split_weights() is None:
+            messages.error(request, "Для API A/B укажите сплит 50/50, 70/30 или свой в формате 80/20.")
+            return redirect("experiments_board")
+
+        conflict_exists = (
+            Experiment.objects.filter(
+                branch=experiment.branch,
+                wants_ab_test=True,
+                status=Experiment.Status.IN_PROGRESS,
+            )
+            .exclude(pk=experiment.pk)
+            .exists()
+        )
+        if conflict_exists:
+            messages.error(request, "Для этой ветки уже идет другой A/B тест.")
+            return redirect("experiments_board")
 
     if status_value in EXPERIMENT_FINAL_STATUSES:
         missing_fields = []

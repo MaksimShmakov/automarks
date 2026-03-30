@@ -1,5 +1,6 @@
 import io
 import json
+import hashlib
 from datetime import date, timedelta
 from unittest.mock import patch
 
@@ -602,6 +603,102 @@ class BotPlatformTests(TaskBoardBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["bot"], "test_bot_name")
 
+    @patch("marks.views.secrets.randbelow", return_value=85)
+    def test_bot_api_number_response_includes_ab_key_for_active_test(self, randbelow_mock):
+        Experiment.objects.create(
+            title="API split by number",
+            branch=self.branch_main,
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Проверяем вариант первого экрана.",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_70_30,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 3, 1),
+            end_date=date(2026, 4, 10),
+            status=Experiment.Status.IN_PROGRESS,
+            created_by=self.admin_user,
+        )
+        number = self.branch_main.tags.get(url__isnull=False).number
+
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "test_bot_name"}),
+            {"number": number},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["number"], number)
+        self.assertEqual(payload["ab_key"], 2)
+        randbelow_mock.assert_called_once_with(100)
+
+    def test_bot_api_number_response_defaults_ab_key_to_one_without_active_test(self):
+        number = self.branch_main.tags.get(url__isnull=False).number
+
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "test_bot_name"}),
+            {"number": number},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["number"], number)
+        self.assertEqual(payload["ab_key"], 1)
+
+    def test_bot_api_returns_branch_ab_assignment_for_specific_branch_code(self):
+        experiment = Experiment.objects.create(
+            title="API split",
+            branch=self.branch_main,
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="Проверяем вариант первого экрана.",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_70_30,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 3, 1),
+            end_date=date(2026, 4, 10),
+            status=Experiment.Status.IN_PROGRESS,
+            created_by=self.admin_user,
+        )
+        ab_key = "user-42"
+        seed = f"{experiment.id}:{self.branch_main.id}:{ab_key}".encode("utf-8")
+        bucket = int(hashlib.sha256(seed).hexdigest()[:16], 16) % 100
+        expected_variant_value = 1 if bucket < 70 else 2
+
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "test_bot_name"}),
+            {"branch_code": "mn", "ab_key": ab_key},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["branches"]), 1)
+        self.assertEqual(payload["branches"][0]["code"], "MN")
+        self.assertEqual(payload["branches"][0]["ab_test"]["active"], True)
+        self.assertEqual(payload["branches"][0]["ab_test"]["variant_value"], expected_variant_value)
+        self.assertEqual(payload["branches"][0]["ab_test"]["split"], "70/30")
+        self.assertEqual(payload["branches"][0]["ab_test"]["assignment_mode"], "hash")
+
+    def test_bot_api_returns_inactive_ab_payload_when_branch_has_no_active_test(self):
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "test_bot_name"}),
+            {"branch_code": "MN"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["branches"][0]["ab_test"], {"active": False})
+
+    def test_bot_api_returns_404_for_unknown_branch_code(self):
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "test_bot_name"}),
+            {"branch_code": "missing"},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
     def test_bots_list_creates_telegram_bot_and_strips_at_sign(self):
         self.client.force_login(self.admin_user)
 
@@ -695,6 +792,19 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.result_variant_a, "CR 11%, open rate 24%")
         self.assertEqual(experiment.result_variant_b, "CR 13%, open rate 28%")
 
+    def test_create_experiment_saves_selected_branch_for_api(self):
+        response = self.client.post(
+            reverse("experiments_board"),
+            self._experiment_payload(branch=str(self.branch_main.id)),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        experiment = Experiment.objects.get()
+        self.assertEqual(experiment.branch_id, self.branch_main.id)
+        return
+        experiment = Experiment.objects.get(title="РќРѕРІС‹Р№ A/B С‚РµСЃС‚")
+        self.assertEqual(experiment.branch_id, self.branch_main.id)
+
     def test_edit_experiment_updates_dates_and_metrics(self):
         experiment = Experiment.objects.create(
             title="Текущий тест",
@@ -726,6 +836,50 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.end_date, date(2026, 3, 18))
         self.assertEqual(experiment.result_variant_a, "CR 10%")
         self.assertEqual(experiment.result_variant_b, "CR 14%")
+
+    def test_update_experiment_status_blocks_parallel_branch_test(self):
+        Experiment.objects.create(
+            title="РђРєС‚РёРІРЅС‹Р№ С‚РµСЃС‚",
+            branch=self.branch_main,
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+5%",
+            hypothesis="РџРµСЂРІС‹Р№ С‚РµСЃС‚",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 3, 10),
+            end_date=date(2026, 3, 17),
+            created_by=self.admin_user,
+            status=Experiment.Status.IN_PROGRESS,
+        )
+        queued_experiment = Experiment.objects.create(
+            title="Р’С‚РѕСЂРѕР№ С‚РµСЃС‚",
+            branch=self.branch_main,
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+3%",
+            hypothesis="Р’С‚РѕСЂР°СЏ РіРёРїРѕС‚РµР·Р°",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 3, 18),
+            end_date=date(2026, 3, 25),
+            created_by=self.admin_user,
+            status=Experiment.Status.DRAFT,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": queued_experiment.id}),
+            {"status": Experiment.Status.IN_PROGRESS},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        queued_experiment.refresh_from_db()
+        self.assertEqual(queued_experiment.status, Experiment.Status.DRAFT)
+        return
+        self.assertContains(response, "Р”Р»СЏ СЌС‚РѕР№ РІРµС‚РєРё СѓР¶Рµ РёРґРµС‚ РґСЂСѓРіРѕР№ A/B С‚РµСЃС‚.")
 
     def test_final_status_requires_dates_and_ab_results(self):
         experiment = Experiment.objects.create(

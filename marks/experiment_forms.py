@@ -26,6 +26,7 @@ class ExperimentForm(forms.ModelForm):
         fields = [
             "title",
             "wants_ab_test",
+            "branch",
             "ab_test_options",
             "ab_test_custom_option",
             "metric_impact",
@@ -44,6 +45,7 @@ class ExperimentForm(forms.ModelForm):
             "comment",
         ]
         labels = {
+            "branch": "Р’РµС‚РєР° РґР»СЏ API",
             "title": "Название эксперимента",
             "wants_ab_test": "Хочу А/Б тест",
             "ab_test_custom_option": "Свой вариант",
@@ -64,6 +66,7 @@ class ExperimentForm(forms.ModelForm):
         }
         widgets = {
             "title": forms.TextInput(attrs={"class": "form-control"}),
+            "branch": forms.Select(attrs={"class": "form-select"}),
             "ab_test_custom_option": forms.TextInput(attrs={"class": "form-control"}),
             "metric_impact": forms.TextInput(attrs={"class": "form-control"}),
             "expected_change": forms.TextInput(attrs={"class": "form-control"}),
@@ -89,13 +92,25 @@ class ExperimentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["wants_ab_test"].required = False
+        self.fields["branch"].required = False
+        self.fields["branch"].queryset = self.fields["branch"].queryset.select_related("bot").order_by(
+            "bot__platform",
+            "bot__display_name",
+            "bot__name",
+            "name",
+            "code",
+        )
+        self.fields["branch"].label_from_instance = lambda obj: f"{obj.bot.title} / {obj.name} ({obj.code})"
+        self.fields["branch"].help_text = "Опционально: выбранная ветка позволит API отдавать вариант A/B по ее коду."
 
     def clean(self):
         cleaned = super().clean()
         wants_ab_test = bool(cleaned.get("wants_ab_test"))
         ab_options = cleaned.get("ab_test_options") or []
+        branch = cleaned.get("branch")
 
         if not wants_ab_test:
+            cleaned["branch"] = None
             cleaned["ab_test_options"] = []
             cleaned["ab_test_custom_option"] = ""
             cleaned["metric_impact"] = ""
@@ -130,6 +145,9 @@ class ExperimentForm(forms.ModelForm):
         elif traffic_volume == Experiment.TrafficVolume.OTHER and not (cleaned.get("traffic_volume_other") or "").strip():
             self.add_error("traffic_volume_other", "Укажите свой вариант объема трафика.")
 
+        if branch and traffic_volume and not self.errors.get("traffic_volume_other") and Experiment.parse_traffic_split(traffic_volume, cleaned.get("traffic_volume_other")) is None:
+            self.add_error("traffic_volume", "Для API A/B нужен сплит 50/50, 70/30 или свой в формате 80/20.")
+
         duration = cleaned.get("test_duration")
         if not duration:
             self.add_error("test_duration", "Выберите длительность теста.")
@@ -142,5 +160,18 @@ class ExperimentForm(forms.ModelForm):
         end_date = cleaned.get("end_date")
         if start_date and end_date and end_date < start_date:
             self.add_error("end_date", "Дата окончания не может быть раньше даты старта.")
+
+        if branch and self.instance.pk and self.instance.status == Experiment.Status.IN_PROGRESS:
+            conflict_exists = (
+                Experiment.objects.filter(
+                    branch=branch,
+                    wants_ab_test=True,
+                    status=Experiment.Status.IN_PROGRESS,
+                )
+                .exclude(pk=self.instance.pk)
+                .exists()
+            )
+            if conflict_exists:
+                self.add_error("branch", "Для этой ветки уже идет другой A/B тест.")
 
         return cleaned

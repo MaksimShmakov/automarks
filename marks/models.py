@@ -306,7 +306,10 @@ class Experiment(models.Model):
         UNTIL_USERS = "until_users", "До набора X пользователей"
         END_DATE = "end_date", "Конкретная дата окончания"
 
+    CUSTOM_SPLIT_RE = re.compile(r"^\s*(\d{1,3})\s*[/:\-]\s*(\d{1,3})\s*$")
+
     title = models.CharField(max_length=255, blank=True, default="")
+    branch = models.ForeignKey("Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="experiments")
     wants_ab_test = models.BooleanField(default=False)
     ab_test_options = models.JSONField(blank=True, default=list)
     ab_test_custom_option = models.CharField(max_length=255, blank=True, default="")
@@ -335,6 +338,43 @@ class Experiment(models.Model):
     def __str__(self):
         name = self.title or f"Эксперимент #{self.id}"
         return f"{name} ({self.get_status_display()})"
+
+    @classmethod
+    def parse_traffic_split(cls, traffic_volume, traffic_volume_other=""):
+        predefined = {
+            cls.TrafficVolume.SPLIT_50_50: (50, 50),
+            cls.TrafficVolume.SPLIT_70_30: (70, 30),
+        }
+        if traffic_volume in predefined:
+            return predefined[traffic_volume]
+        if traffic_volume != cls.TrafficVolume.OTHER:
+            return None
+
+        match = cls.CUSTOM_SPLIT_RE.match((traffic_volume_other or "").strip())
+        if not match:
+            return None
+
+        left = int(match.group(1))
+        right = int(match.group(2))
+        if left <= 0 or right <= 0:
+            return None
+        return left, right
+
+    def get_traffic_split_weights(self):
+        return self.parse_traffic_split(self.traffic_volume, self.traffic_volume_other)
+
+    def is_api_active(self, current_date=None):
+        if not self.wants_ab_test or self.status != self.Status.IN_PROGRESS or not self.branch_id:
+            return False
+        if self.get_traffic_split_weights() is None:
+            return False
+
+        current_date = current_date or timezone.localdate()
+        if self.start_date and self.start_date > current_date:
+            return False
+        if self.end_date and self.end_date < current_date:
+            return False
+        return True
 
 
 class Tag(models.Model):

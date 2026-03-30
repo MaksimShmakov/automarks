@@ -96,6 +96,17 @@
                 {% endfor %}
               </div>
 
+              <div class="col-12">
+                <label class="form-label">{{ form.branch.label }}</label>
+                {{ form.branch }}
+                {% if form.branch.help_text %}
+                  <div class="form-text">{{ form.branch.help_text }}</div>
+                {% endif %}
+                {% for error in form.branch.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
               <div class="col-12 col-lg-6">
                 <label class="form-label">{{ form.metric_impact.label }}</label>
                 {{ form.metric_impact }}
@@ -263,6 +274,10 @@
                     {% if experiment.item.wants_ab_test %}A/B{% else %}Без A/B{% endif %}
                   </span>
                 </div>
+
+                {% if experiment.item.branch %}
+                  <div class="small mb-2 text-muted">API: {{ experiment.item.branch.bot.title }} / {{ experiment.item.branch.name }} ({{ experiment.item.branch.code }})</div>
+                {% endif %}
 
                 {% if experiment.item.wants_ab_test %}
                   {% if experiment.ab_option_labels %}
