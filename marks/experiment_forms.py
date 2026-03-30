@@ -45,9 +45,9 @@ class ExperimentForm(forms.ModelForm):
             "comment",
         ]
         labels = {
-            "branch": "Р’РµС‚РєР° РґР»СЏ API",
+            "branch": "Ветка для API",
             "title": "Название эксперимента",
-            "wants_ab_test": "Хочу А/Б тест",
+            "wants_ab_test": "Хочу A/B тест",
             "ab_test_custom_option": "Свой вариант",
             "metric_impact": "На какую метрику влияем",
             "expected_change": "Какое изменение ожидаем",
@@ -59,7 +59,7 @@ class ExperimentForm(forms.ModelForm):
             "duration_end_date": "Плановая дата окончания",
             "start_date": "Дата старта теста",
             "end_date": "Дата окончания теста",
-            "dashboard_url": "Ссылка на дашборд",
+            "dashboard_url": "Ссылка на dashboard",
             "result_variant_a": "Данные по варианту A",
             "result_variant_b": "Данные по варианту B",
             "comment": "Комментарий",
@@ -102,7 +102,9 @@ class ExperimentForm(forms.ModelForm):
             "code",
         )
         self.fields["branch"].label_from_instance = lambda obj: f"{obj.bot.title} / {obj.name} ({obj.code})"
-        self.fields["branch"].help_text = "Опционально: выбранная ветка позволит API отдавать вариант A/B по ее коду."
+        self.fields["branch"].help_text = (
+            "Опционально: выбранная ветка позволит API отдавать вариант A/B по ее коду."
+        )
 
     def clean(self):
         cleaned = super().clean()
@@ -130,7 +132,7 @@ class ExperimentForm(forms.ModelForm):
             return cleaned
 
         if not ab_options:
-            self.add_error("ab_test_options", "Выберите минимум один вариант для А/Б теста.")
+            self.add_error("ab_test_options", "Выберите минимум один вариант для A/B теста.")
         if "custom" in ab_options and not (cleaned.get("ab_test_custom_option") or "").strip():
             self.add_error("ab_test_custom_option", "Заполните поле 'Свой вариант'.")
         if not (cleaned.get("metric_impact") or "").strip():
@@ -143,11 +145,21 @@ class ExperimentForm(forms.ModelForm):
         traffic_volume = cleaned.get("traffic_volume")
         if not traffic_volume:
             self.add_error("traffic_volume", "Выберите объем трафика.")
-        elif traffic_volume == Experiment.TrafficVolume.OTHER and not (cleaned.get("traffic_volume_other") or "").strip():
+        elif traffic_volume == Experiment.TrafficVolume.OTHER and not (
+            cleaned.get("traffic_volume_other") or ""
+        ).strip():
             self.add_error("traffic_volume_other", "Укажите свой вариант объема трафика.")
 
-        if branch and traffic_volume and not self.errors.get("traffic_volume_other") and Experiment.parse_traffic_split(traffic_volume, cleaned.get("traffic_volume_other")) is None:
-            self.add_error("traffic_volume", "Для API A/B нужен сплит 50/50, 70/30 или свой в формате 80/20.")
+        if (
+            branch
+            and traffic_volume
+            and not self.errors.get("traffic_volume_other")
+            and Experiment.parse_traffic_split(traffic_volume, cleaned.get("traffic_volume_other")) is None
+        ):
+            self.add_error(
+                "traffic_volume",
+                "Для API A/B нужен сплит 50/50, 70/30 или свой в формате 80/20.",
+            )
 
         duration = cleaned.get("test_duration")
         if not duration:
@@ -175,4 +187,58 @@ class ExperimentForm(forms.ModelForm):
             if conflict_exists:
                 self.add_error("branch", "Для этой ветки уже идет другой A/B тест.")
 
+        return cleaned
+
+
+class ExperimentCompletionForm(forms.Form):
+    status = forms.ChoiceField(
+        choices=[
+            (Experiment.Status.SUCCESS, "Успех"),
+            (Experiment.Status.FAILED, "Провал"),
+            (Experiment.Status.RETEST, "Ретест"),
+        ],
+        label="Итог теста",
+    )
+    start_date = forms.DateField(
+        label="Дата старта теста",
+        error_messages={"required": "Укажите дату старта теста."},
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+    end_date = forms.DateField(
+        label="Дата окончания теста",
+        error_messages={"required": "Укажите дату окончания теста."},
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+    dashboard_url = forms.CharField(
+        required=False,
+        label="Ссылка на dashboard",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "https://...",
+            }
+        ),
+    )
+    result_variant_a = forms.CharField(
+        label="Данные по варианту A",
+        error_messages={"required": "Заполните данные варианта A."},
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+    )
+    result_variant_b = forms.CharField(
+        label="Данные по варианту B",
+        error_messages={"required": "Заполните данные варианта B."},
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+    )
+    comment = forms.CharField(
+        required=False,
+        label="Комментарий",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        start_date = cleaned.get("start_date")
+        end_date = cleaned.get("end_date")
+        if start_date and end_date and end_date < start_date:
+            self.add_error("end_date", "Дата окончания не может быть раньше даты старта.")
         return cleaned

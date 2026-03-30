@@ -25,6 +25,18 @@
   .inline-status-form {
     display: inline-block;
   }
+  .experiment-hint {
+    border: 1px solid rgba(13, 110, 253, 0.12);
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.08), rgba(13, 110, 253, 0.02));
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+  }
+  .experiment-finish-data {
+    display: none;
+  }
+  .completion-modal textarea {
+    resize: vertical;
+  }
 </style>
 {% endblock %}
 
@@ -174,6 +186,13 @@
                 {% endfor %}
               </div>
 
+              <div class="col-12">
+                <div class="experiment-hint small text-muted">
+                  Финальные даты и результаты можно оставить пустыми при создании.
+                  Их удобнее внести позже через кнопку <b>«Завершить»</b> прямо в карточке эксперимента.
+                </div>
+              </div>
+
               <div class="col-12 col-md-6 col-xl-4">
                 <label class="form-label">{{ form.start_date.label }}</label>
                 {{ form.start_date }}
@@ -202,7 +221,7 @@
               <div class="col-12 col-lg-6">
                 <label class="form-label">{{ form.result_variant_a.label }}</label>
                 {{ form.result_variant_a }}
-                <div class="form-text">Итоговые цифры варианта A заносятся вручную из dashboard.</div>
+                <div class="form-text">Итоговые цифры варианта A можно внести позже из попапа завершения.</div>
                 {% for error in form.result_variant_a.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
@@ -211,7 +230,7 @@
               <div class="col-12 col-lg-6">
                 <label class="form-label">{{ form.result_variant_b.label }}</label>
                 {{ form.result_variant_b }}
-                <div class="form-text">Итоговые цифры варианта B заносятся вручную из dashboard.</div>
+                <div class="form-text">Итоговые цифры варианта B можно внести позже из попапа завершения.</div>
                 {% for error in form.result_variant_b.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
@@ -244,7 +263,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
     <h3 class="h5 mb-1">Канбан экспериментов</h3>
-    <div class="text-muted small">Финальное решение выбирается кнопками, технические статусы показывают этап работы.</div>
+    <div class="text-muted small">Технические статусы показывают этап работы, а итог теста теперь можно внести прямо из попапа без перехода в редактирование.</div>
   </div>
   <div class="text-muted small">После финализации карточка уходит в библиотеку гипотез ниже.</div>
 </div>
@@ -314,6 +333,12 @@
                   <div class="small mt-2 experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
                 {% endif %}
 
+                <div class="experiment-finish-data">
+                  <textarea class="js-completion-result-a">{{ experiment.item.result_variant_a }}</textarea>
+                  <textarea class="js-completion-result-b">{{ experiment.item.result_variant_b }}</textarea>
+                  <textarea class="js-completion-comment">{{ experiment.item.comment }}</textarea>
+                </div>
+
                 <div class="d-flex flex-wrap gap-2 mt-3">
                   <a href="{% url 'experiments_board' %}?edit={{ experiment.item.id }}" class="btn btn-outline-dark btn-sm">Редактировать</a>
                   <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Открыть dashboard</a>
@@ -348,27 +373,40 @@
                       <input type="hidden" name="status" value="completed">
                       <button class="btn btn-outline-dark btn-sm">На оценку</button>
                     </form>
+                    <button
+                      type="button"
+                      class="btn btn-success btn-sm experiment-finish-trigger"
+                      data-bs-toggle="modal"
+                      data-bs-target="#experimentCompletionModal"
+                      data-action-url="{% url 'update_experiment_status' experiment.item.id %}"
+                      data-title="{{ experiment.item.title|default:'Эксперимент'|escape }}"
+                      data-start-date="{{ experiment.item.start_date|date:'Y-m-d' }}"
+                      data-end-date="{{ experiment.item.end_date|date:'Y-m-d' }}"
+                      data-dashboard-url="{{ experiment.item.dashboard_url|default_if_none:''|escape }}"
+                      data-default-status="success"
+                    >
+                      Завершить
+                    </button>
                   {% elif experiment.item.status == "completed" %}
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
                       <input type="hidden" name="status" value="in_progress">
                       <button class="btn btn-outline-warning btn-sm">Вернуть в тест</button>
                     </form>
-                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
-                      {% csrf_token %}
-                      <input type="hidden" name="status" value="success">
-                      <button class="btn btn-success btn-sm">Успех</button>
-                    </form>
-                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
-                      {% csrf_token %}
-                      <input type="hidden" name="status" value="failed">
-                      <button class="btn btn-danger btn-sm">Провал</button>
-                    </form>
-                    <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
-                      {% csrf_token %}
-                      <input type="hidden" name="status" value="retest">
-                      <button class="btn btn-info btn-sm">Ретест</button>
-                    </form>
+                    <button
+                      type="button"
+                      class="btn btn-success btn-sm experiment-finish-trigger"
+                      data-bs-toggle="modal"
+                      data-bs-target="#experimentCompletionModal"
+                      data-action-url="{% url 'update_experiment_status' experiment.item.id %}"
+                      data-title="{{ experiment.item.title|default:'Эксперимент'|escape }}"
+                      data-start-date="{{ experiment.item.start_date|date:'Y-m-d' }}"
+                      data-end-date="{{ experiment.item.end_date|date:'Y-m-d' }}"
+                      data-dashboard-url="{{ experiment.item.dashboard_url|default_if_none:''|escape }}"
+                      data-default-status="success"
+                    >
+                      Завершить
+                    </button>
                   {% endif %}
                 </div>
               </div>
@@ -442,6 +480,71 @@
     </div>
   {% endfor %}
 </div>
+
+<div class="modal fade completion-modal" id="experimentCompletionModal" tabindex="-1" aria-labelledby="experimentCompletionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" id="experiment-completion-form">
+        {% csrf_token %}
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="experimentCompletionModalLabel">Завершить эксперимент</h5>
+            <div class="text-muted small" id="experimentCompletionModalSubtitle">
+              Внесите итог, даты и данные по вариантам. После сохранения карточка уйдет в библиотеку гипотез.
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="completion-status">Итог теста</label>
+              <select class="form-select" id="completion-status" name="status">
+                <option value="success">Успех</option>
+                <option value="failed">Провал</option>
+                <option value="retest">Ретест</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="completion-dashboard-url">Ссылка на dashboard</label>
+              <input type="text" class="form-control" id="completion-dashboard-url" name="dashboard_url" placeholder="https://...">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="completion-start-date">Дата старта теста</label>
+              <input type="date" class="form-control" id="completion-start-date" name="start_date">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="completion-end-date">Дата окончания теста</label>
+              <input type="date" class="form-control" id="completion-end-date" name="end_date">
+            </div>
+
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="completion-result-a">Данные по варианту A</label>
+              <textarea class="form-control" id="completion-result-a" name="result_variant_a" rows="5"></textarea>
+            </div>
+
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="completion-result-b">Данные по варианту B</label>
+              <textarea class="form-control" id="completion-result-b" name="result_variant_b" rows="5"></textarea>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="completion-comment">Комментарий</label>
+              <textarea class="form-control" id="completion-comment" name="comment" rows="3"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-success">Сохранить итог</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -455,35 +558,69 @@
     const durationUsersWrap = document.getElementById("duration-users-wrap");
     const durationDateWrap = document.getElementById("duration-date-wrap");
     const customOptionWrap = document.getElementById("ab-custom-option-wrap");
-
-    if (!wantsAB || !abFields) return;
+    const completionForm = document.getElementById("experiment-completion-form");
+    const completionTitle = document.getElementById("experimentCompletionModalLabel");
+    const completionSubtitle = document.getElementById("experimentCompletionModalSubtitle");
+    const completionStatus = document.getElementById("completion-status");
+    const completionStartDate = document.getElementById("completion-start-date");
+    const completionEndDate = document.getElementById("completion-end-date");
+    const completionDashboardUrl = document.getElementById("completion-dashboard-url");
+    const completionResultA = document.getElementById("completion-result-a");
+    const completionResultB = document.getElementById("completion-result-b");
+    const completionComment = document.getElementById("completion-comment");
 
     function getCustomCheckbox() {
       return document.querySelector('input[name="ab_test_options"][value="custom"]');
     }
 
     function toggleABFields() {
+      if (!wantsAB || !abFields) return;
       abFields.classList.toggle("d-none", !wantsAB.checked);
     }
 
     function toggleTrafficOther() {
+      if (!trafficOtherWrap) return;
       const show = trafficSelect && trafficSelect.value === "other";
       trafficOtherWrap.classList.toggle("d-none", !show);
     }
 
     function toggleDurationFields() {
+      if (!durationUsersWrap || !durationDateWrap) return;
       const value = durationSelect ? durationSelect.value : "";
       durationUsersWrap.classList.toggle("d-none", value !== "until_users");
       durationDateWrap.classList.toggle("d-none", value !== "end_date");
     }
 
     function toggleCustomOption() {
+      if (!customOptionWrap) return;
       const checkbox = getCustomCheckbox();
       const show = !!(checkbox && checkbox.checked);
       customOptionWrap.classList.toggle("d-none", !show);
     }
 
-    wantsAB.addEventListener("change", toggleABFields);
+    document.querySelectorAll(".experiment-finish-trigger").forEach((trigger) => {
+      trigger.addEventListener("click", () => {
+        if (!completionForm) return;
+        const card = trigger.closest(".experiment-item");
+        const resultA = card ? card.querySelector(".js-completion-result-a") : null;
+        const resultB = card ? card.querySelector(".js-completion-result-b") : null;
+        const comment = card ? card.querySelector(".js-completion-comment") : null;
+        const title = trigger.dataset.title || "Эксперимент";
+
+        completionForm.action = trigger.dataset.actionUrl || "";
+        completionTitle.textContent = `Завершить: ${title}`;
+        completionSubtitle.textContent = "Внесите итог, даты и данные по вариантам. После сохранения карточка уйдет в библиотеку гипотез.";
+        completionStatus.value = trigger.dataset.defaultStatus || "success";
+        completionStartDate.value = trigger.dataset.startDate || "";
+        completionEndDate.value = trigger.dataset.endDate || "";
+        completionDashboardUrl.value = trigger.dataset.dashboardUrl || "";
+        completionResultA.value = resultA ? resultA.value : "";
+        completionResultB.value = resultB ? resultB.value : "";
+        completionComment.value = comment ? comment.value : "";
+      });
+    });
+
+    if (wantsAB) wantsAB.addEventListener("change", toggleABFields);
     if (trafficSelect) trafficSelect.addEventListener("change", toggleTrafficOther);
     if (durationSelect) durationSelect.addEventListener("change", toggleDurationFields);
     document.querySelectorAll('input[name="ab_test_options"]').forEach((item) => {

@@ -906,6 +906,44 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.status, Experiment.Status.COMPLETED)
         self.assertContains(response, "Перед финальным решением заполните")
 
+    def test_final_status_saves_completion_data_from_modal_post(self):
+        experiment = Experiment.objects.create(
+            title="Финализация из попапа",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            expected_change="+7%",
+            hypothesis="Завершаем тест прямо из карточки",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+            status=Experiment.Status.IN_PROGRESS,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": experiment.id}),
+            {
+                "status": Experiment.Status.SUCCESS,
+                "start_date": "2026-03-10",
+                "end_date": "2026-03-17",
+                "dashboard_url": "https://example.com/dashboard/final-exp",
+                "result_variant_a": "CR 10%, CTR 18%",
+                "result_variant_b": "CR 14%, CTR 22%",
+                "comment": "Победил вариант B",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.status, Experiment.Status.SUCCESS)
+        self.assertEqual(experiment.start_date, date(2026, 3, 10))
+        self.assertEqual(experiment.end_date, date(2026, 3, 17))
+        self.assertEqual(experiment.dashboard_url, "https://example.com/dashboard/final-exp")
+        self.assertEqual(experiment.result_variant_a, "CR 10%, CTR 18%")
+        self.assertEqual(experiment.result_variant_b, "CR 14%, CTR 22%")
+        self.assertEqual(experiment.comment, "Победил вариант B")
+
     def test_finalized_experiment_moves_to_library(self):
         active_experiment = Experiment.objects.create(
             title="Активный тест",

@@ -44,7 +44,7 @@ from .forms import (
     BuildTaskRequestForm,
     TaskStatusForm,
 )
-from .experiment_forms import ExperimentForm
+from .experiment_forms import ExperimentCompletionForm, ExperimentForm
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import (
     notify_new_task,
@@ -109,6 +109,13 @@ def _set_last_tag_action(request, action, branch_id, payload):
         "payload": payload,
     }
     request.session.modified = True
+
+
+def _flatten_form_errors(form):
+    errors = []
+    for field_errors in form.errors.values():
+        errors.extend(str(error) for error in field_errors)
+    return errors
 
 
 def _serialize_tag_for_api(tag, branch=None, include_ab_key=False):
@@ -1663,13 +1670,14 @@ def _build_experiment_card(experiment, option_labels, default_dashboard_url):
 def _experiments_board_context(form, editing_experiment=None):
     option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
     default_dashboard_url = reverse("dashboard")
+    completion_form = ExperimentCompletionForm()
 
     active_columns = [{**column, "items": []} for column in EXPERIMENT_ACTIVE_COLUMNS]
     library_columns = [{**column, "items": []} for column in EXPERIMENT_LIBRARY_COLUMNS]
     active_map = {column["status"]: column for column in active_columns}
     library_map = {column["status"]: column for column in library_columns}
 
-    for experiment in Experiment.objects.select_related("created_by").all():
+    for experiment in Experiment.objects.select_related("created_by", "branch__bot").all():
         card = _build_experiment_card(
             experiment=experiment,
             option_labels=option_labels,
@@ -1686,6 +1694,7 @@ def _experiments_board_context(form, editing_experiment=None):
         "active_columns": active_columns,
         "library_columns": library_columns,
         "default_dashboard_url": default_dashboard_url,
+        "completion_form": completion_form,
     }
 
 
@@ -1736,6 +1745,7 @@ def experiments_board(request):
 def update_experiment_status(request, experiment_id):
     experiment = get_object_or_404(Experiment, id=experiment_id)
     status_value = (request.POST.get("status") or "").strip()
+    completion_data = None
     if status_value not in Experiment.Status.values:
         messages.error(request, "Недопустимый статус эксперимента.")
         return redirect("experiments_board")
@@ -1759,27 +1769,55 @@ def update_experiment_status(request, experiment_id):
             return redirect("experiments_board")
 
     if status_value in EXPERIMENT_FINAL_STATUSES:
-        missing_fields = []
-        if not experiment.start_date:
-            missing_fields.append("дату старта")
-        if not experiment.end_date:
-            missing_fields.append("дату окончания")
-        if not (experiment.result_variant_a or "").strip():
-            missing_fields.append("данные варианта A")
-        if not (experiment.result_variant_b or "").strip():
-            missing_fields.append("данные варианта B")
-        if missing_fields:
+        completion_form = ExperimentCompletionForm(
+            {
+                "status": status_value,
+                "start_date": request.POST.get("start_date") or experiment.start_date or "",
+                "end_date": request.POST.get("end_date") or experiment.end_date or "",
+                "dashboard_url": request.POST.get("dashboard_url")
+                if "dashboard_url" in request.POST
+                else experiment.dashboard_url,
+                "result_variant_a": request.POST.get("result_variant_a")
+                if "result_variant_a" in request.POST
+                else experiment.result_variant_a,
+                "result_variant_b": request.POST.get("result_variant_b")
+                if "result_variant_b" in request.POST
+                else experiment.result_variant_b,
+                "comment": request.POST.get("comment") if "comment" in request.POST else experiment.comment,
+            }
+        )
+        if not completion_form.is_valid():
             messages.error(
                 request,
-                f"Перед финальным решением заполните: {', '.join(missing_fields)}.",
+                "Перед финальным решением заполните: " + " ".join(_flatten_form_errors(completion_form)),
             )
             return redirect("experiments_board")
+        completion_data = completion_form.cleaned_data
+        status_value = completion_data["status"]
 
     if experiment.status == status_value:
         messages.info(request, "Статус эксперимента не изменился.")
         return redirect("experiments_board")
 
     experiment.status = status_value
-    experiment.save(update_fields=["status", "updated_at"])
+    update_fields = ["status", "updated_at"]
+    if completion_data is not None:
+        experiment.start_date = completion_data["start_date"]
+        experiment.end_date = completion_data["end_date"]
+        experiment.dashboard_url = completion_data["dashboard_url"]
+        experiment.result_variant_a = completion_data["result_variant_a"]
+        experiment.result_variant_b = completion_data["result_variant_b"]
+        experiment.comment = completion_data["comment"]
+        update_fields.extend(
+            [
+                "start_date",
+                "end_date",
+                "dashboard_url",
+                "result_variant_a",
+                "result_variant_b",
+                "comment",
+            ]
+        )
+    experiment.save(update_fields=update_fields)
     messages.success(request, "Статус эксперимента обновлен.")
     return redirect("experiments_board")
