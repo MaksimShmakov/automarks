@@ -13,6 +13,12 @@
   .experiment-item {
     border: 1px solid rgba(0, 0, 0, 0.08);
   }
+  .experiment-item .card-body {
+    padding: 0.9rem;
+  }
+  .experiment-item h5 {
+    font-size: 1rem;
+  }
   .experiment-text {
     white-space: pre-line;
   }
@@ -25,17 +31,26 @@
   .inline-status-form {
     display: inline-block;
   }
-  .experiment-hint {
-    border: 1px solid rgba(13, 110, 253, 0.12);
-    background: linear-gradient(135deg, rgba(13, 110, 253, 0.08), rgba(13, 110, 253, 0.02));
-    border-radius: 0.75rem;
-    padding: 0.875rem 1rem;
-  }
   .experiment-finish-data {
     display: none;
   }
   .completion-modal textarea {
     resize: vertical;
+  }
+  .experiment-checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.5rem 1rem;
+  }
+  .experiment-link {
+    word-break: break-word;
+  }
+  .experiment-meta {
+    display: grid;
+    gap: 0.3rem;
+  }
+  .experiment-filter-card .form-label {
+    margin-bottom: 0.35rem;
   }
 </style>
 {% endblock %}
@@ -43,11 +58,72 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <h2 class="mb-0">Эксперименты</h2>
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{{ default_dashboard_url }}" class="btn btn-outline-secondary btn-sm">Открыть общий dashboard</a>
-    {% if editing_experiment %}
-      <a href="{% url 'experiments_board' %}" class="btn btn-outline-dark btn-sm">Сбросить редактирование</a>
-    {% endif %}
+  {% if editing_experiment %}
+    <a href="{% url 'experiments_board' %}" class="btn btn-outline-dark btn-sm">Сбросить редактирование</a>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm experiment-filter-card mb-4">
+  <div class="card-header bg-light"><b>Фильтры</b></div>
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-lg-4">
+        <label class="form-label">Поиск</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ filter_values.query }}"
+          class="form-control form-control-sm"
+          placeholder="Название, бот, ветка, ТЗ, комментарий..."
+        >
+      </div>
+      <div class="col-12 col-md-6 col-lg-2">
+        <label class="form-label">Статус</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for value, label in status_filter_choices %}
+            <option value="{{ value }}" {% if filter_values.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-2">
+        <label class="form-label">Тип</label>
+        <select name="kind" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for value, label in kind_filter_choices %}
+            <option value="{{ value }}" {% if filter_values.kind == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-2">
+        <label class="form-label">Бот</label>
+        <select name="bot_id" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for bot in bot_filter_options %}
+            <option value="{{ bot.id }}" {% if filter_values.bot_id == bot.id|stringformat:"s" %}selected{% endif %}>
+              {{ bot.title }} ({{ bot.get_platform_display }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-2">
+        <label class="form-label">API-ветка</label>
+        <select name="branch_id" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for branch in branch_filter_options %}
+            <option value="{{ branch.id }}" {% if filter_values.branch_id == branch.id|stringformat:"s" %}selected{% endif %}>
+              {{ branch.bot.title }} / {{ branch.name }} ({{ branch.code }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-2 d-grid">
+        <button class="btn btn-primary btn-sm">Применить</button>
+      </div>
+      <div class="col-12 col-md-6 col-lg-2 d-grid">
+        <a href="{% url 'experiments_board' %}" class="btn btn-outline-secondary btn-sm">Сбросить</a>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -62,10 +138,26 @@
         <input type="hidden" name="experiment_id" value="{{ editing_experiment.id }}">
       {% endif %}
 
-      <div class="col-12">
+      <div class="col-12 col-xl-8">
         <label class="form-label">{{ form.title.label }}</label>
         {{ form.title }}
         {% for error in form.title.errors %}
+          <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="col-12 col-xl-4">
+        <label class="form-label">{{ form.tz_url.label }}</label>
+        {{ form.tz_url }}
+        {% for error in form.tz_url.errors %}
+          <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">{{ form.comment.label }}</label>
+        {{ form.comment }}
+        {% for error in form.comment.errors %}
           <div class="invalid-feedback d-block">{{ error }}</div>
         {% endfor %}
       </div>
@@ -85,7 +177,7 @@
             <div class="row g-3">
               <div class="col-12">
                 <label class="form-label">{{ form.ab_test_options.label }}</label>
-                <div class="d-flex flex-column gap-2">
+                <div class="experiment-checkbox-grid">
                   {% for checkbox in form.ab_test_options %}
                     <div class="form-check">
                       {{ checkbox.tag }}
@@ -100,7 +192,7 @@
                 {% endfor %}
               </div>
 
-              <div class="col-12 d-none" id="ab-custom-option-wrap">
+              <div class="col-12 col-xl-6 d-none" id="ab-custom-option-wrap">
                 <label class="form-label">{{ form.ab_test_custom_option.label }}</label>
                 {{ form.ab_test_custom_option }}
                 {% for error in form.ab_test_custom_option.errors %}
@@ -108,18 +200,26 @@
                 {% endfor %}
               </div>
 
-              <div class="col-12">
+              <div class="col-12 col-xl-6">
                 <label class="form-label">{{ form.branch.label }}</label>
+                <input
+                  type="text"
+                  class="form-control form-control-sm mb-2"
+                  id="branch-search-input"
+                  placeholder="Поиск по боту, ветке или коду..."
+                  autocomplete="off"
+                >
                 {{ form.branch }}
                 {% if form.branch.help_text %}
                   <div class="form-text">{{ form.branch.help_text }}</div>
                 {% endif %}
+                <div class="form-text d-none" id="branch-search-empty">Ничего не найдено.</div>
                 {% for error in form.branch.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
               </div>
 
-              <div class="col-12 col-lg-6">
+              <div class="col-12 col-xl-6">
                 <label class="form-label">{{ form.metric_impact.label }}</label>
                 {{ form.metric_impact }}
                 {% for error in form.metric_impact.errors %}
@@ -127,7 +227,15 @@
                 {% endfor %}
               </div>
 
-              <div class="col-12 col-lg-6">
+              <div class="col-12 col-xl-6">
+                <label class="form-label">{{ form.comparison_text.label }}</label>
+                {{ form.comparison_text }}
+                {% for error in form.comparison_text.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="col-12 col-xl-6">
                 <label class="form-label">{{ form.expected_change.label }}</label>
                 {{ form.expected_change }}
                 {% for error in form.expected_change.errors %}
@@ -186,13 +294,6 @@
                 {% endfor %}
               </div>
 
-              <div class="col-12">
-                <div class="experiment-hint small text-muted">
-                  Финальные даты и результаты можно оставить пустыми при создании.
-                  Их удобнее внести позже через кнопку <b>«Завершить»</b> прямо в карточке эксперимента.
-                </div>
-              </div>
-
               <div class="col-12 col-md-6 col-xl-4">
                 <label class="form-label">{{ form.start_date.label }}</label>
                 {{ form.start_date }}
@@ -212,7 +313,6 @@
               <div class="col-12 col-xl-4">
                 <label class="form-label">{{ form.dashboard_url.label }}</label>
                 {{ form.dashboard_url }}
-                <div class="form-text">Можно оставить пустым и пользоваться общим dashboard.</div>
                 {% for error in form.dashboard_url.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
@@ -221,7 +321,6 @@
               <div class="col-12 col-lg-6">
                 <label class="form-label">{{ form.result_variant_a.label }}</label>
                 {{ form.result_variant_a }}
-                <div class="form-text">Итоговые цифры варианта A можно внести позже из попапа завершения.</div>
                 {% for error in form.result_variant_a.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
@@ -230,7 +329,6 @@
               <div class="col-12 col-lg-6">
                 <label class="form-label">{{ form.result_variant_b.label }}</label>
                 {{ form.result_variant_b }}
-                <div class="form-text">Итоговые цифры варианта B можно внести позже из попапа завершения.</div>
                 {% for error in form.result_variant_b.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
@@ -238,14 +336,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="col-12">
-        <label class="form-label">{{ form.comment.label }}</label>
-        {{ form.comment }}
-        {% for error in form.comment.errors %}
-          <div class="invalid-feedback d-block">{{ error }}</div>
-        {% endfor %}
       </div>
 
       <div class="col-12 d-flex flex-wrap gap-2">
@@ -261,11 +351,7 @@
 </div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <div>
-    <h3 class="h5 mb-1">Канбан экспериментов</h3>
-    <div class="text-muted small">Технические статусы показывают этап работы, а итог теста теперь можно внести прямо из попапа без перехода в редактирование.</div>
-  </div>
-  <div class="text-muted small">После финализации карточка уходит в библиотеку гипотез ниже.</div>
+  <h3 class="h5 mb-0">Канбан экспериментов</h3>
 </div>
 
 <div class="row g-3 mb-4">
@@ -283,55 +369,73 @@
             <div class="card experiment-item shadow-sm">
               <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                  <div>
+                  <div class="pe-2">
                     <h5 class="mb-1">{{ experiment.item.title|default:"Эксперимент" }}</h5>
                     <div class="small text-muted">
                       #{{ experiment.item.id }} • {{ experiment.item.created_at|date:"d.m.Y H:i" }} • {{ experiment.item.created_by.username|default:"-" }}
                     </div>
                   </div>
-                  <span class="badge {% if experiment.item.wants_ab_test %}text-bg-dark{% else %}text-bg-secondary{% endif %}">
-                    {% if experiment.item.wants_ab_test %}A/B{% else %}Без A/B{% endif %}
-                  </span>
+                  <div class="d-flex flex-column align-items-end gap-1">
+                    <span class="badge {% if experiment.item.wants_ab_test %}text-bg-dark{% else %}text-bg-secondary{% endif %}">
+                      {% if experiment.item.wants_ab_test %}A/B{% else %}Без A/B{% endif %}
+                    </span>
+                    {% if experiment.item.technical_task_id %}
+                      <span class="badge text-bg-light">Техзадача #{{ experiment.item.technical_task_id }}</span>
+                    {% endif %}
+                  </div>
                 </div>
 
-                {% if experiment.item.branch %}
-                  <div class="small mb-2 text-muted">API: {{ experiment.item.branch.bot.title }} / {{ experiment.item.branch.name }} ({{ experiment.item.branch.code }})</div>
-                {% endif %}
-
-                {% if experiment.item.wants_ab_test %}
-                  {% if experiment.ab_option_labels %}
-                    <div class="small mb-1"><b>Варианты:</b> {{ experiment.ab_option_labels|join:", " }}</div>
+                <div class="experiment-meta small">
+                  {% if experiment.item.branch %}
+                    <div><b>API:</b> {{ experiment.item.branch.bot.title }} / {{ experiment.item.branch.name }} ({{ experiment.item.branch.code }})</div>
                   {% endif %}
-                  {% if experiment.item.ab_test_custom_option %}
-                    <div class="small mb-1"><b>Свой вариант:</b> {{ experiment.item.ab_test_custom_option }}</div>
+                  {% if experiment.item.tz_url %}
+                    <div class="experiment-link"><b>ТЗ:</b> <a href="{{ experiment.item.tz_url }}" target="_blank" rel="noopener">{{ experiment.item.tz_url }}</a></div>
                   {% endif %}
-                  <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
-                  <div class="small mb-1"><b>Ожидаемое изменение:</b> {{ experiment.item.expected_change|default:"-" }}</div>
-                  <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
-                  <div class="small mb-1"><b>Объем трафика:</b> {{ experiment.item.get_traffic_volume_display|default:"-" }}</div>
-                  {% if experiment.item.traffic_volume_other %}
-                    <div class="small mb-1"><b>Объем трафика, другое:</b> {{ experiment.item.traffic_volume_other }}</div>
+                  {% if experiment.item.wants_ab_test %}
+                    {% if experiment.item.comparison_text %}
+                      <div><b>Что с чем сравниваем:</b> {{ experiment.item.comparison_text }}</div>
+                    {% endif %}
+                    {% if experiment.ab_option_labels %}
+                      <div><b>Что меняем:</b> {{ experiment.ab_option_labels|join:", " }}</div>
+                    {% endif %}
+                    {% if experiment.item.ab_test_custom_option %}
+                      <div><b>Свой вариант:</b> {{ experiment.item.ab_test_custom_option }}</div>
+                    {% endif %}
+                    <div><b>Цель:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
+                    <div><b>Ожидаемое изменение:</b> {{ experiment.item.expected_change|default:"-" }}</div>
+                    <div><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
+                    <div><b>Объем трафика:</b> {{ experiment.item.get_traffic_volume_display|default:"-" }}</div>
+                    {% if experiment.item.traffic_volume_other %}
+                      <div><b>Свой объем:</b> {{ experiment.item.traffic_volume_other }}</div>
+                    {% endif %}
+                    <div><b>Длительность:</b> {{ experiment.item.get_test_duration_display|default:"-" }}</div>
+                    {% if experiment.item.duration_users %}
+                      <div><b>До пользователей:</b> {{ experiment.item.duration_users }}</div>
+                    {% endif %}
+                    {% if experiment.item.duration_end_date %}
+                      <div><b>Плановое завершение:</b> {{ experiment.item.duration_end_date|date:"d.m.Y" }}</div>
+                    {% endif %}
+                    {% if experiment.item.start_date %}
+                      <div><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y" }}</div>
+                    {% endif %}
+                    {% if experiment.item.end_date %}
+                      <div><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y" }}</div>
+                    {% endif %}
+                    {% if experiment.dashboard_href %}
+                      <div class="experiment-link"><b>DataLens:</b> <a href="{{ experiment.dashboard_href }}" target="_blank" rel="noopener">{{ experiment.dashboard_href }}</a></div>
+                    {% endif %}
+                    {% if experiment.item.result_variant_a %}
+                      <div class="experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a }}</div>
+                    {% endif %}
+                    {% if experiment.item.result_variant_b %}
+                      <div class="experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b }}</div>
+                    {% endif %}
                   {% endif %}
-                  <div class="small mb-1"><b>Плановая длительность:</b> {{ experiment.item.get_test_duration_display|default:"-" }}</div>
-                  {% if experiment.item.duration_users %}
-                    <div class="small mb-1"><b>До пользователей:</b> {{ experiment.item.duration_users }}</div>
+                  {% if experiment.item.comment %}
+                    <div class="experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
                   {% endif %}
-                  {% if experiment.item.duration_end_date %}
-                    <div class="small mb-1"><b>Плановое завершение:</b> {{ experiment.item.duration_end_date|date:"d.m.Y" }}</div>
-                  {% endif %}
-                  <div class="small mb-1"><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y"|default:"-" }}</div>
-                  <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y"|default:"-" }}</div>
-                  {% if experiment.item.result_variant_a %}
-                    <div class="small mb-1 experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a }}</div>
-                  {% endif %}
-                  {% if experiment.item.result_variant_b %}
-                    <div class="small mb-1 experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b }}</div>
-                  {% endif %}
-                {% endif %}
-
-                {% if experiment.item.comment %}
-                  <div class="small mt-2 experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
-                {% endif %}
+                </div>
 
                 <div class="experiment-finish-data">
                   <textarea class="js-completion-result-a">{{ experiment.item.result_variant_a }}</textarea>
@@ -341,7 +445,9 @@
 
                 <div class="d-flex flex-wrap gap-2 mt-3">
                   <a href="{% url 'experiments_board' %}?edit={{ experiment.item.id }}" class="btn btn-outline-dark btn-sm">Редактировать</a>
-                  <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Открыть dashboard</a>
+                  {% if experiment.dashboard_href %}
+                    <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">DataLens</a>
+                  {% endif %}
                 </div>
 
                 <div class="d-flex flex-wrap gap-2 mt-2">
@@ -349,24 +455,38 @@
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
                       <input type="hidden" name="status" value="draft">
-                      <button class="btn btn-outline-primary btn-sm">В Draft</button>
+                      <button
+                        type="button"
+                        class="btn btn-outline-primary btn-sm experiment-status-confirm"
+                        data-title="Перевести в разработку"
+                        data-message="Вы уверены, что у вас готово техническое задание?"
+                      >
+                        В разработку
+                      </button>
                     </form>
                   {% elif experiment.item.status == "draft" %}
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
                       <input type="hidden" name="status" value="backlog">
-                      <button class="btn btn-outline-secondary btn-sm">В Backlog</button>
+                      <button class="btn btn-outline-secondary btn-sm">В подготовку</button>
                     </form>
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
                       <input type="hidden" name="status" value="in_progress">
-                      <button class="btn btn-outline-warning btn-sm">Запустить тест</button>
+                      <button
+                        type="button"
+                        class="btn btn-outline-warning btn-sm experiment-status-confirm"
+                        data-title="Перевести в тест"
+                        data-message="Вы получили подтверждение от технического специалиста, что всё готово к работе?"
+                      >
+                        В тест
+                      </button>
                     </form>
                   {% elif experiment.item.status == "in_progress" %}
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
                       <input type="hidden" name="status" value="draft">
-                      <button class="btn btn-outline-primary btn-sm">Вернуть в Draft</button>
+                      <button class="btn btn-outline-primary btn-sm">Вернуть в разработку</button>
                     </form>
                     <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                       {% csrf_token %}
@@ -421,10 +541,7 @@
 </div>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <div>
-    <h3 class="h5 mb-1">Библиотека гипотез</h3>
-    <div class="text-muted small">Сюда попадают финализированные A/B тесты и исчезают из общего потока.</div>
-  </div>
+  <h3 class="h5 mb-0">Библиотека гипотез</h3>
 </div>
 
 <div class="row g-3">
@@ -451,19 +568,36 @@
                   <span class="badge text-bg-light">{{ experiment.item.get_status_display }}</span>
                 </div>
 
-                <div class="small mb-1"><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
-                <div class="small mb-1"><b>Метрика:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
-                <div class="small mb-1"><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y"|default:"-" }}</div>
-                <div class="small mb-1"><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y"|default:"-" }}</div>
-                <div class="small mb-1 experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a|default:"-" }}</div>
-                <div class="small mb-1 experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b|default:"-" }}</div>
-                {% if experiment.item.comment %}
-                  <div class="small mt-2 experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
-                {% endif %}
+                <div class="experiment-meta small">
+                  {% if experiment.item.branch %}
+                    <div><b>API:</b> {{ experiment.item.branch.bot.title }} / {{ experiment.item.branch.name }} ({{ experiment.item.branch.code }})</div>
+                  {% endif %}
+                  {% if experiment.item.comparison_text %}
+                    <div><b>Что с чем сравниваем:</b> {{ experiment.item.comparison_text }}</div>
+                  {% endif %}
+                  <div><b>Цель:</b> {{ experiment.item.metric_impact|default:"-" }}</div>
+                  <div><b>Гипотеза:</b> {{ experiment.item.hypothesis|default:"-" }}</div>
+                  {% if experiment.item.start_date %}
+                    <div><b>Дата старта:</b> {{ experiment.item.start_date|date:"d.m.Y" }}</div>
+                  {% endif %}
+                  {% if experiment.item.end_date %}
+                    <div><b>Дата окончания:</b> {{ experiment.item.end_date|date:"d.m.Y" }}</div>
+                  {% endif %}
+                  {% if experiment.dashboard_href %}
+                    <div class="experiment-link"><b>DataLens:</b> <a href="{{ experiment.dashboard_href }}" target="_blank" rel="noopener">{{ experiment.dashboard_href }}</a></div>
+                  {% endif %}
+                  <div class="experiment-text"><b>Вариант A:</b> {{ experiment.item.result_variant_a|default:"-" }}</div>
+                  <div class="experiment-text"><b>Вариант B:</b> {{ experiment.item.result_variant_b|default:"-" }}</div>
+                  {% if experiment.item.comment %}
+                    <div class="experiment-text"><b>Комментарий:</b> {{ experiment.item.comment }}</div>
+                  {% endif %}
+                </div>
 
                 <div class="d-flex flex-wrap gap-2 mt-3">
                   <a href="{% url 'experiments_board' %}?edit={{ experiment.item.id }}" class="btn btn-outline-dark btn-sm">Редактировать</a>
-                  <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Открыть dashboard</a>
+                  {% if experiment.dashboard_href %}
+                    <a href="{{ experiment.dashboard_href }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">DataLens</a>
+                  {% endif %}
                   <form method="post" action="{% url 'update_experiment_status' experiment.item.id %}" class="inline-status-form">
                     {% csrf_token %}
                     <input type="hidden" name="status" value="completed">
@@ -479,6 +613,22 @@
       </div>
     </div>
   {% endfor %}
+</div>
+
+<div class="modal fade" id="statusConfirmModal" tabindex="-1" aria-labelledby="statusConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="statusConfirmModalLabel">Подтвердите действие</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body" id="statusConfirmModalBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Нет</button>
+        <button type="button" class="btn btn-primary" id="statusConfirmModalSubmit">Да</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="modal fade completion-modal" id="experimentCompletionModal" tabindex="-1" aria-labelledby="experimentCompletionModalLabel" aria-hidden="true">
@@ -507,7 +657,7 @@
             </div>
 
             <div class="col-12 col-md-6">
-              <label class="form-label" for="completion-dashboard-url">Ссылка на dashboard</label>
+              <label class="form-label" for="completion-dashboard-url">Ссылка на DataLens</label>
               <input type="text" class="form-control" id="completion-dashboard-url" name="dashboard_url" placeholder="https://...">
             </div>
 
@@ -545,6 +695,7 @@
     </div>
   </div>
 </div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -558,6 +709,9 @@
     const durationUsersWrap = document.getElementById("duration-users-wrap");
     const durationDateWrap = document.getElementById("duration-date-wrap");
     const customOptionWrap = document.getElementById("ab-custom-option-wrap");
+    const branchSelect = document.getElementById("id_branch");
+    const branchSearchInput = document.getElementById("branch-search-input");
+    const branchSearchEmpty = document.getElementById("branch-search-empty");
     const completionForm = document.getElementById("experiment-completion-form");
     const completionTitle = document.getElementById("experimentCompletionModalLabel");
     const completionSubtitle = document.getElementById("experimentCompletionModalSubtitle");
@@ -568,6 +722,13 @@
     const completionResultA = document.getElementById("completion-result-a");
     const completionResultB = document.getElementById("completion-result-b");
     const completionComment = document.getElementById("completion-comment");
+    const statusConfirmModalElement = document.getElementById("statusConfirmModal");
+    const statusConfirmModal = statusConfirmModalElement ? new bootstrap.Modal(statusConfirmModalElement) : null;
+    const statusConfirmTitle = document.getElementById("statusConfirmModalLabel");
+    const statusConfirmBody = document.getElementById("statusConfirmModalBody");
+    const statusConfirmSubmit = document.getElementById("statusConfirmModalSubmit");
+    let pendingStatusForm = null;
+    let originalBranchOptions = [];
 
     function getCustomCheckbox() {
       return document.querySelector('input[name="ab_test_options"][value="custom"]');
@@ -598,6 +759,44 @@
       customOptionWrap.classList.toggle("d-none", !show);
     }
 
+    function rememberBranchOptions() {
+      if (!branchSelect) return;
+      originalBranchOptions = Array.from(branchSelect.options).map((option) => ({
+        value: option.value,
+        label: option.text,
+      }));
+    }
+
+    function filterBranchOptions() {
+      if (!branchSelect || !branchSearchInput) return;
+      if (!originalBranchOptions.length) {
+        rememberBranchOptions();
+      }
+
+      const selectedValue = branchSelect.value;
+      const query = (branchSearchInput.value || "").toLowerCase().trim();
+      branchSelect.innerHTML = "";
+      let visibleCount = 0;
+
+      originalBranchOptions.forEach((item) => {
+        const isPlaceholder = !item.value;
+        const matches = isPlaceholder || !query || item.label.toLowerCase().includes(query) || item.value === selectedValue;
+        if (!matches) {
+          return;
+        }
+
+        const option = new Option(item.label, item.value, false, item.value === selectedValue);
+        branchSelect.add(option);
+        if (!isPlaceholder) {
+          visibleCount += 1;
+        }
+      });
+
+      if (branchSearchEmpty) {
+        branchSearchEmpty.classList.toggle("d-none", visibleCount > 0 || !query);
+      }
+    }
+
     document.querySelectorAll(".experiment-finish-trigger").forEach((trigger) => {
       trigger.addEventListener("click", () => {
         if (!completionForm) return;
@@ -620,17 +819,49 @@
       });
     });
 
+    document.querySelectorAll(".experiment-status-confirm").forEach((trigger) => {
+      trigger.addEventListener("click", () => {
+        pendingStatusForm = trigger.closest("form");
+        if (!statusConfirmModal || !pendingStatusForm) {
+          if (pendingStatusForm) {
+            pendingStatusForm.submit();
+          }
+          return;
+        }
+
+        statusConfirmTitle.textContent = trigger.dataset.title || "Подтвердите действие";
+        statusConfirmBody.textContent = trigger.dataset.message || "";
+        statusConfirmModal.show();
+      });
+    });
+
+    if (statusConfirmSubmit) {
+      statusConfirmSubmit.addEventListener("click", () => {
+        if (!pendingStatusForm) return;
+        pendingStatusForm.submit();
+      });
+    }
+
+    if (statusConfirmModalElement) {
+      statusConfirmModalElement.addEventListener("hidden.bs.modal", () => {
+        pendingStatusForm = null;
+      });
+    }
+
     if (wantsAB) wantsAB.addEventListener("change", toggleABFields);
     if (trafficSelect) trafficSelect.addEventListener("change", toggleTrafficOther);
     if (durationSelect) durationSelect.addEventListener("change", toggleDurationFields);
+    if (branchSearchInput) branchSearchInput.addEventListener("input", filterBranchOptions);
     document.querySelectorAll('input[name="ab_test_options"]').forEach((item) => {
       item.addEventListener("change", toggleCustomOption);
     });
 
+    rememberBranchOptions();
     toggleABFields();
     toggleTrafficOther();
     toggleDurationFields();
     toggleCustomOption();
+    filterBranchOptions();
   })();
 </script>
 {% endblock %}

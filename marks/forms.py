@@ -193,9 +193,31 @@ class BotStatusForm(forms.Form):
 
 
 class BranchForm(forms.ModelForm):
+    def __init__(self, *args, bot=None, **kwargs):
+        self.bot = bot
+        super().__init__(*args, **kwargs)
+        self.fields["name"].widget.attrs.setdefault("placeholder", "Например, Welcome")
+        self.fields["code"].required = False
+        self.fields["code"].widget.attrs.setdefault("placeholder", "Например, ell01")
+        suggested_code = Branch.suggest_next_code(bot)
+        if suggested_code:
+            self.fields["code"].help_text = f"Следующий код подставлен автоматически: {suggested_code}"
+            if not self.is_bound and not self.initial.get("code") and not getattr(self.instance, "pk", None):
+                self.initial["code"] = suggested_code
+
     class Meta:
         model = Branch
         fields = ["name", "code"]
+
+    def clean_code(self):
+        value = " ".join((self.cleaned_data.get("code") or "").strip().split())
+        if value:
+            return value
+
+        suggested_code = Branch.suggest_next_code(self.bot)
+        if suggested_code and not getattr(self.instance, "pk", None):
+            return suggested_code
+        raise forms.ValidationError("Укажите код ветки.")
 
 
 class TagForm(forms.ModelForm):

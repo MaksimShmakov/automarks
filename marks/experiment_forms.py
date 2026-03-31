@@ -18,7 +18,7 @@ class ExperimentForm(forms.ModelForm):
         choices=AB_TEST_OPTIONS,
         required=False,
         widget=forms.CheckboxSelectMultiple(),
-        label="Варианты",
+        label="Что меняем?",
     )
 
     class Meta:
@@ -30,8 +30,10 @@ class ExperimentForm(forms.ModelForm):
             "ab_test_options",
             "ab_test_custom_option",
             "metric_impact",
+            "comparison_text",
             "expected_change",
             "hypothesis",
+            "tz_url",
             "traffic_volume",
             "traffic_volume_other",
             "test_duration",
@@ -49,9 +51,11 @@ class ExperimentForm(forms.ModelForm):
             "title": "Название эксперимента",
             "wants_ab_test": "Хочу A/B тест",
             "ab_test_custom_option": "Свой вариант",
-            "metric_impact": "На какую метрику влияем",
+            "metric_impact": "Цель эксперимента",
+            "comparison_text": "Что с чем сравниваем",
             "expected_change": "Какое изменение ожидаем",
             "hypothesis": "Гипотеза",
+            "tz_url": "ТЗ",
             "traffic_volume": "Объем трафика",
             "traffic_volume_other": "Другое (объем трафика)",
             "test_duration": "Длительность теста",
@@ -59,7 +63,7 @@ class ExperimentForm(forms.ModelForm):
             "duration_end_date": "Плановая дата окончания",
             "start_date": "Дата старта теста",
             "end_date": "Дата окончания теста",
-            "dashboard_url": "Ссылка на dashboard",
+            "dashboard_url": "Ссылка на DataLens",
             "result_variant_a": "Данные по варианту A",
             "result_variant_b": "Данные по варианту B",
             "comment": "Комментарий",
@@ -69,8 +73,15 @@ class ExperimentForm(forms.ModelForm):
             "branch": forms.Select(attrs={"class": "form-select"}),
             "ab_test_custom_option": forms.TextInput(attrs={"class": "form-control"}),
             "metric_impact": forms.TextInput(attrs={"class": "form-control"}),
+            "comparison_text": forms.TextInput(attrs={"class": "form-control"}),
             "expected_change": forms.TextInput(attrs={"class": "form-control"}),
             "hypothesis": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "tz_url": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Ссылка или описание ТЗ",
+                }
+            ),
             "traffic_volume": forms.Select(attrs={"class": "form-select"}),
             "traffic_volume_other": forms.TextInput(attrs={"class": "form-control"}),
             "test_duration": forms.Select(attrs={"class": "form-select"}),
@@ -81,7 +92,7 @@ class ExperimentForm(forms.ModelForm):
             "dashboard_url": forms.TextInput(
                 attrs={
                     "class": "form-control",
-                    "placeholder": "https://... или оставьте пустым для общего dashboard",
+                    "placeholder": "https://...",
                 }
             ),
             "result_variant_a": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
@@ -117,6 +128,7 @@ class ExperimentForm(forms.ModelForm):
             cleaned["ab_test_options"] = []
             cleaned["ab_test_custom_option"] = ""
             cleaned["metric_impact"] = ""
+            cleaned["comparison_text"] = ""
             cleaned["expected_change"] = ""
             cleaned["hypothesis"] = ""
             cleaned["traffic_volume"] = ""
@@ -136,7 +148,9 @@ class ExperimentForm(forms.ModelForm):
         if "custom" in ab_options and not (cleaned.get("ab_test_custom_option") or "").strip():
             self.add_error("ab_test_custom_option", "Заполните поле 'Свой вариант'.")
         if not (cleaned.get("metric_impact") or "").strip():
-            self.add_error("metric_impact", "Заполните поле метрики.")
+            self.add_error("metric_impact", "Заполните цель эксперимента.")
+        if not (cleaned.get("comparison_text") or "").strip():
+            self.add_error("comparison_text", "Заполните поле 'Что с чем сравниваем'.")
         if not (cleaned.get("expected_change") or "").strip():
             self.add_error("expected_change", "Заполните ожидаемое изменение.")
         if not (cleaned.get("hypothesis") or "").strip():
@@ -211,7 +225,7 @@ class ExperimentCompletionForm(forms.Form):
     )
     dashboard_url = forms.CharField(
         required=False,
-        label="Ссылка на dashboard",
+        label="Ссылка на DataLens",
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",

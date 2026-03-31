@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 
+from .forms import BranchForm
 from .models import Bot, Branch, Experiment, Product, TaskRequest, UserProfile
 
 
@@ -44,7 +45,7 @@ class TaskBoardAccessTests(TaskBoardBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Задачник")
-        self.assertNotContains(response, "Непрочитанное")
+        self.assertFalse(response.context["show_kanban"])
         self.assertNotContains(response, "Выгрузить выполненные за период")
 
 
@@ -450,8 +451,8 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f"#{done_task.id}")
-        self.assertNotContains(response, f"#{unread_task.id}")
+        self.assertContains(response, f">#{done_task.id}<")
+        self.assertNotContains(response, f">#{unread_task.id}<")
 
     def test_completed_counters_use_branch_units(self):
         second_branch = Branch.objects.create(bot=self.bot, name="Dev", code="DV")
@@ -757,10 +758,12 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
     def _experiment_payload(self, **overrides):
         payload = {
             "title": "Новый A/B тест",
+            "tz_url": "https://example.com/tz/exp-1",
             "wants_ab_test": "on",
             "ab_test_options": ["start"],
             "ab_test_custom_option": "",
             "metric_impact": "CR",
+            "comparison_text": "Текущий экран vs новый экран",
             "expected_change": "+8%",
             "hypothesis": "Если изменить первый экран, конверсия вырастет.",
             "traffic_volume": Experiment.TrafficVolume.SPLIT_50_50,
@@ -786,6 +789,8 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
 
         experiment = Experiment.objects.get(title="Новый A/B тест")
         self.assertEqual(experiment.status, Experiment.Status.BACKLOG)
+        self.assertEqual(experiment.tz_url, "https://example.com/tz/exp-1")
+        self.assertEqual(experiment.comparison_text, "Текущий экран vs новый экран")
         self.assertEqual(experiment.start_date, date(2026, 3, 10))
         self.assertEqual(experiment.end_date, date(2026, 3, 17))
         self.assertEqual(experiment.dashboard_url, "https://example.com/dashboard/exp-1")
@@ -836,6 +841,71 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.end_date, date(2026, 3, 18))
         self.assertEqual(experiment.result_variant_a, "CR 10%")
         self.assertEqual(experiment.result_variant_b, "CR 14%")
+
+    def test_move_to_draft_requires_tz(self):
+        experiment = Experiment.objects.create(
+            title="Без ТЗ",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            comparison_text="Экран A vs экран B",
+            expected_change="+5%",
+            hypothesis="Проверяем первый экран",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+            status=Experiment.Status.BACKLOG,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": experiment.id}),
+            {"status": Experiment.Status.DRAFT},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.status, Experiment.Status.BACKLOG)
+        self.assertIsNone(experiment.technical_task)
+        self.assertContains(response, "Чтобы отправить эксперимент в разработку, заполните поле ТЗ.")
+
+    @patch("marks.views.notify_new_task", return_value=(True, ""))
+    def test_move_to_draft_creates_task_for_tech_team(self, notify_mock):
+        experiment = Experiment.objects.create(
+            title="Готов к разработке",
+            branch=self.branch_main,
+            tz_url="https://example.com/tz/ready",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            comparison_text="Экран A vs экран B",
+            expected_change="+5%",
+            hypothesis="Проверяем первый экран",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            start_date=date(2026, 4, 2),
+            created_by=self.admin_user,
+            status=Experiment.Status.BACKLOG,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": experiment.id}),
+            {"status": Experiment.Status.DRAFT},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("experiments_board"))
+
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.status, Experiment.Status.DRAFT)
+        self.assertIsNotNone(experiment.technical_task)
+
+        task = experiment.technical_task
+        self.assertEqual(task.task_type, TaskRequest.Type.PATCH)
+        self.assertEqual(task.status, TaskRequest.Status.UNREAD)
+        self.assertEqual(task.tz_url, "https://example.com/tz/ready")
+        self.assertEqual(list(task.branches.values_list("id", flat=True)), [self.branch_main.id])
+        notify_mock.assert_called_once_with(task)
 
     def test_update_experiment_status_blocks_parallel_branch_test(self):
         Experiment.objects.create(
@@ -992,3 +1062,13 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertIn(active_experiment.id, active_ids)
         self.assertNotIn(final_experiment.id, active_ids)
         self.assertIn(final_experiment.id, library_ids)
+
+
+class BranchFormTests(TaskBoardBaseTestCase):
+    def test_branch_form_prefills_next_code_from_existing_branches(self):
+        Branch.objects.create(bot=self.bot, name="Second", code="ell01")
+        Branch.objects.create(bot=self.bot, name="Third", code="ell02")
+
+        form = BranchForm(bot=self.bot)
+
+        self.assertEqual(form.initial["code"], "ell03")

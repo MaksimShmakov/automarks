@@ -11,7 +11,7 @@ from django.contrib.auth import login
 from django.urls import reverse
 from datetime import datetime, timedelta, time
 from django.db import transaction
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -674,7 +674,7 @@ def branches_list(request, bot_id):
     patchnotes = PatchNote.objects.filter(branch__bot=bot).select_related("branch")
     bot_status_form = BotStatusForm(bot=bot)
     bot_details_form = BotDetailsForm(instance=bot)
-    form = BranchForm()
+    form = BranchForm(bot=bot)
     if request.method == "POST":
         if request.POST.get("form_type") == "bot_status":
             bot_status_form = BotStatusForm(request.POST, bot=bot)
@@ -689,7 +689,7 @@ def branches_list(request, bot_id):
                 messages.success(request, "Информация о боте обновлена.")
                 return redirect("branches_list", bot_id=bot.id)
         else:
-            form = BranchForm(request.POST)
+            form = BranchForm(request.POST, bot=bot)
             if form.is_valid():
                 branch = form.save(commit=False)
                 branch.bot = bot
@@ -1643,8 +1643,8 @@ def _legacy_update_experiment_status(request, experiment_id):
 
 
 EXPERIMENT_ACTIVE_COLUMNS = [
-    {"status": Experiment.Status.BACKLOG, "title": "Backlog", "color": "secondary"},
-    {"status": Experiment.Status.DRAFT, "title": "Draft", "color": "primary"},
+    {"status": Experiment.Status.BACKLOG, "title": "Подготовка", "color": "secondary"},
+    {"status": Experiment.Status.DRAFT, "title": "Разработка", "color": "primary"},
     {"status": Experiment.Status.IN_PROGRESS, "title": "В тесте", "color": "warning"},
     {"status": Experiment.Status.COMPLETED, "title": "На оценке", "color": "dark"},
 ]
@@ -1658,18 +1658,157 @@ EXPERIMENT_LIBRARY_COLUMNS = [
 EXPERIMENT_FINAL_STATUSES = {column["status"] for column in EXPERIMENT_LIBRARY_COLUMNS}
 
 
-def _build_experiment_card(experiment, option_labels, default_dashboard_url):
+EXPERIMENT_KIND_FILTER_CHOICES = [
+    ("ab", "Только A/B"),
+    ("plain", "Без A/B"),
+]
+
+
+def _build_experiment_card(experiment, option_labels):
     selected_options = experiment.ab_test_options or []
     return {
         "item": experiment,
         "ab_option_labels": [option_labels.get(code, code) for code in selected_options],
-        "dashboard_href": experiment.dashboard_url or default_dashboard_url,
+        "dashboard_href": (experiment.dashboard_url or "").strip(),
     }
 
 
-def _experiments_board_context(form, editing_experiment=None):
+def _get_experiment_filter_values(request):
+    status_value = (request.GET.get("status") or "").strip()
+    bot_id = (request.GET.get("bot_id") or "").strip()
+    branch_id = (request.GET.get("branch_id") or "").strip()
+    kind = (request.GET.get("kind") or "").strip()
+
+    return {
+        "query": (request.GET.get("q") or "").strip(),
+        "status": status_value if status_value in Experiment.Status.values else "",
+        "bot_id": bot_id if bot_id.isdigit() else "",
+        "branch_id": branch_id if branch_id.isdigit() else "",
+        "kind": kind if kind in dict(EXPERIMENT_KIND_FILTER_CHOICES) else "",
+    }
+
+
+def _apply_experiment_filters(queryset, filter_values):
+    query = (filter_values.get("query") or "").strip()
+    if query:
+        queryset = queryset.filter(
+            Q(title__icontains=query)
+            | Q(metric_impact__icontains=query)
+            | Q(comparison_text__icontains=query)
+            | Q(expected_change__icontains=query)
+            | Q(hypothesis__icontains=query)
+            | Q(comment__icontains=query)
+            | Q(tz_url__icontains=query)
+            | Q(branch__name__icontains=query)
+            | Q(branch__code__icontains=query)
+            | Q(branch__bot__name__icontains=query)
+            | Q(branch__bot__display_name__icontains=query)
+        )
+
+    if filter_values.get("status"):
+        queryset = queryset.filter(status=filter_values["status"])
+    if filter_values.get("bot_id"):
+        queryset = queryset.filter(branch__bot_id=filter_values["bot_id"])
+    if filter_values.get("branch_id"):
+        queryset = queryset.filter(branch_id=filter_values["branch_id"])
+
+    kind = filter_values.get("kind")
+    if kind == "ab":
+        queryset = queryset.filter(wants_ab_test=True)
+    elif kind == "plain":
+        queryset = queryset.filter(wants_ab_test=False)
+
+    return queryset
+
+
+def _derive_experiment_task_deadline(experiment):
+    for value in (experiment.start_date, experiment.duration_end_date, experiment.end_date):
+        if value:
+            return timezone.make_aware(datetime.combine(value, time(hour=12)))
+    return timezone.now() + timedelta(days=3)
+
+
+def _build_experiment_task_comment(experiment, option_labels):
+    selected_options = experiment.ab_test_options or []
+    parts = [f"Эксперимент: {experiment.title or f'#{experiment.id}'}"]
+
+    if experiment.comparison_text:
+        parts.append(f"Что с чем сравниваем: {experiment.comparison_text}")
+    if selected_options:
+        labels = [option_labels.get(code, code) for code in selected_options]
+        parts.append(f"Что меняем: {', '.join(labels)}")
+    if experiment.ab_test_custom_option:
+        parts.append(f"Свой вариант: {experiment.ab_test_custom_option}")
+    if experiment.metric_impact:
+        parts.append(f"Цель: {experiment.metric_impact}")
+    if experiment.expected_change:
+        parts.append(f"Ожидаемое изменение: {experiment.expected_change}")
+    if experiment.dashboard_url:
+        parts.append(f"DataLens: {experiment.dashboard_url}")
+    if experiment.comment:
+        parts.append(f"Комментарий: {experiment.comment}")
+    return " | ".join(parts)
+
+
+def _unpack_notify_result(result):
+    if isinstance(result, tuple):
+        return bool(result[0]), result[1]
+    return bool(result), ""
+
+
+def _sync_experiment_technical_task(experiment, changed_by):
     option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
-    default_dashboard_url = reverse("dashboard")
+    task = experiment.technical_task
+    is_created = task is None
+    old_status = task.status if task is not None else ""
+
+    task_payload = {
+        "task_type": TaskRequest.Type.PATCH,
+        "status": TaskRequest.Status.UNREAD,
+        "cjm_url": "",
+        "tz_url": (experiment.tz_url or "").strip(),
+        "comment": _build_experiment_task_comment(experiment, option_labels),
+        "deadline": _derive_experiment_task_deadline(experiment),
+    }
+
+    if is_created:
+        task = TaskRequest.objects.create(created_by=changed_by, **task_payload)
+    else:
+        for field_name, field_value in task_payload.items():
+            setattr(task, field_name, field_value)
+        if task.created_by_id is None and changed_by is not None:
+            task.created_by = changed_by
+        task.save()
+
+    if experiment.branch_id:
+        task.branches.set([experiment.branch_id])
+    else:
+        task.branches.clear()
+
+    if is_created or experiment.technical_task_id != task.id:
+        experiment.technical_task = task
+        experiment.save(update_fields=["technical_task", "updated_at"])
+
+    if is_created:
+        notify_result = notify_new_task(task)
+    elif old_status != task.status:
+        notify_result = notify_status_change(task=task, old_status=old_status, changed_by=changed_by)
+    else:
+        notify_result = notify_new_task(task)
+
+    notify_ok, notify_error = _unpack_notify_result(notify_result)
+    return task, is_created, notify_ok, notify_error
+
+
+def _experiments_board_context(form, editing_experiment=None, filter_values=None):
+    filter_values = filter_values or {
+        "query": "",
+        "status": "",
+        "bot_id": "",
+        "branch_id": "",
+        "kind": "",
+    }
+    option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
     completion_form = ExperimentCompletionForm()
 
     active_columns = [{**column, "items": []} for column in EXPERIMENT_ACTIVE_COLUMNS]
@@ -1677,11 +1816,13 @@ def _experiments_board_context(form, editing_experiment=None):
     active_map = {column["status"]: column for column in active_columns}
     library_map = {column["status"]: column for column in library_columns}
 
-    for experiment in Experiment.objects.select_related("created_by", "branch__bot").all():
+    experiments_qs = Experiment.objects.select_related("created_by", "branch__bot", "technical_task").all()
+    experiments_qs = _apply_experiment_filters(experiments_qs, filter_values)
+
+    for experiment in experiments_qs:
         card = _build_experiment_card(
             experiment=experiment,
             option_labels=option_labels,
-            default_dashboard_url=default_dashboard_url,
         )
         if experiment.status in active_map:
             active_map[experiment.status]["items"].append(card)
@@ -1693,8 +1834,12 @@ def _experiments_board_context(form, editing_experiment=None):
         "editing_experiment": editing_experiment,
         "active_columns": active_columns,
         "library_columns": library_columns,
-        "default_dashboard_url": default_dashboard_url,
         "completion_form": completion_form,
+        "filter_values": filter_values,
+        "status_filter_choices": Experiment.Status.choices,
+        "kind_filter_choices": EXPERIMENT_KIND_FILTER_CHOICES,
+        "bot_filter_options": sorted(Bot.objects.filter(branches__isnull=False).distinct(), key=_bot_sort_tuple),
+        "branch_filter_options": sorted(Branch.objects.select_related("bot"), key=_branch_sort_tuple),
     }
 
 
@@ -1703,6 +1848,7 @@ def _experiments_board_context(form, editing_experiment=None):
 def experiments_board(request):
     editing_experiment = None
     edit_id = (request.GET.get("edit") or "").strip()
+    filter_values = _get_experiment_filter_values(request)
 
     if request.method == "POST":
         experiment_id = (request.POST.get("experiment_id") or "").strip()
@@ -1735,7 +1881,11 @@ def experiments_board(request):
     return render(
         request,
         "marks/experiments_board.html",
-        _experiments_board_context(form=form, editing_experiment=editing_experiment),
+        _experiments_board_context(
+            form=form,
+            editing_experiment=editing_experiment,
+            filter_values=filter_values,
+        ),
     )
 
 
@@ -1748,6 +1898,10 @@ def update_experiment_status(request, experiment_id):
     completion_data = None
     if status_value not in Experiment.Status.values:
         messages.error(request, "Недопустимый статус эксперимента.")
+        return redirect("experiments_board")
+
+    if status_value == Experiment.Status.DRAFT and not (experiment.tz_url or "").strip():
+        messages.error(request, "Чтобы отправить эксперимент в разработку, заполните поле ТЗ.")
         return redirect("experiments_board")
 
     if status_value == Experiment.Status.IN_PROGRESS and experiment.branch_id:
@@ -1799,25 +1953,48 @@ def update_experiment_status(request, experiment_id):
         messages.info(request, "Статус эксперимента не изменился.")
         return redirect("experiments_board")
 
-    experiment.status = status_value
-    update_fields = ["status", "updated_at"]
-    if completion_data is not None:
-        experiment.start_date = completion_data["start_date"]
-        experiment.end_date = completion_data["end_date"]
-        experiment.dashboard_url = completion_data["dashboard_url"]
-        experiment.result_variant_a = completion_data["result_variant_a"]
-        experiment.result_variant_b = completion_data["result_variant_b"]
-        experiment.comment = completion_data["comment"]
-        update_fields.extend(
-            [
-                "start_date",
-                "end_date",
-                "dashboard_url",
-                "result_variant_a",
-                "result_variant_b",
-                "comment",
-            ]
-        )
-    experiment.save(update_fields=update_fields)
+    task = None
+    task_created = False
+    notify_ok = True
+    notify_error = ""
+    with transaction.atomic():
+        experiment.status = status_value
+        update_fields = ["status", "updated_at"]
+        if completion_data is not None:
+            experiment.start_date = completion_data["start_date"]
+            experiment.end_date = completion_data["end_date"]
+            experiment.dashboard_url = completion_data["dashboard_url"]
+            experiment.result_variant_a = completion_data["result_variant_a"]
+            experiment.result_variant_b = completion_data["result_variant_b"]
+            experiment.comment = completion_data["comment"]
+            update_fields.extend(
+                [
+                    "start_date",
+                    "end_date",
+                    "dashboard_url",
+                    "result_variant_a",
+                    "result_variant_b",
+                    "comment",
+                ]
+            )
+        experiment.save(update_fields=update_fields)
+
+        if status_value == Experiment.Status.DRAFT:
+            task, task_created, notify_ok, notify_error = _sync_experiment_technical_task(
+                experiment=experiment,
+                changed_by=request.user,
+            )
+
     messages.success(request, "Статус эксперимента обновлен.")
+    if task is not None:
+        if task_created:
+            messages.success(request, f"Задача #{task.id} отправлена в техотдел.")
+        else:
+            messages.info(request, f"Задача #{task.id} в техотделе обновлена.")
+        if not notify_ok:
+            messages.warning(
+                request,
+                "Статус обновлен, но уведомление в техотдел не отправлено. "
+                + (notify_error or "Проверьте Telegram-настройки."),
+            )
     return redirect("experiments_board")

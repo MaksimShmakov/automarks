@@ -83,10 +83,19 @@
       <div class="col-md-6">
         <label class="form-label">Название ветки</label>
         {{ form.name|add_class:"form-control" }}
+        {% for error in form.name.errors %}
+        <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
       </div>
       <div class="col-md-6">
         <label class="form-label">Код (например, ell01)</label>
         {{ form.code|add_class:"form-control" }}
+        {% if form.code.help_text %}
+        <div class="form-text">{{ form.code.help_text }}</div>
+        {% endif %}
+        {% for error in form.code.errors %}
+        <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Создать</button>

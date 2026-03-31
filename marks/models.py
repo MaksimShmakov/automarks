@@ -184,6 +184,30 @@ class Branch(models.Model):
     class Meta:
         unique_together = ("bot", "code")
 
+    @classmethod
+    def suggest_next_code(cls, bot):
+        if bot is None:
+            return ""
+
+        grouped_codes = {}
+        for code in cls.objects.filter(bot=bot).values_list("code", flat=True):
+            match = re.match(r"^(.*?)(\d+)$", (code or "").strip())
+            if not match:
+                continue
+
+            prefix, number = match.groups()
+            width = len(number)
+            grouped_codes.setdefault((prefix, width), []).append(int(number))
+
+        if not grouped_codes:
+            return ""
+
+        (prefix, width), numbers = max(
+            grouped_codes.items(),
+            key=lambda item: (len(item[1]), max(item[1]), item[0][0].casefold()),
+        )
+        return f"{prefix}{max(numbers) + 1:0{width}d}"
+
     @property
     def ref_source(self):
         match = re.search(r"(\d+)$", (self.code or "").strip())
@@ -286,8 +310,8 @@ class TaskRequest(models.Model):
 
 class Experiment(models.Model):
     class Status(models.TextChoices):
-        BACKLOG = "backlog", "Backlog"
-        DRAFT = "draft", "Draft"
+        BACKLOG = "backlog", "Подготовка"
+        DRAFT = "draft", "Разработка"
         IN_PROGRESS = "in_progress", "В процессе"
         COMPLETED = "completed", "Завершен"
         SUCCESS = "success", "Успех"
@@ -314,8 +338,10 @@ class Experiment(models.Model):
     ab_test_options = models.JSONField(blank=True, default=list)
     ab_test_custom_option = models.CharField(max_length=255, blank=True, default="")
     metric_impact = models.CharField(max_length=255, blank=True, default="")
+    comparison_text = models.CharField(max_length=255, blank=True, default="")
     expected_change = models.CharField(max_length=255, blank=True, default="")
     hypothesis = models.TextField(blank=True, default="")
+    tz_url = models.CharField(max_length=500, blank=True, default="")
     traffic_volume = models.CharField(max_length=20, choices=TrafficVolume.choices, blank=True, default="")
     traffic_volume_other = models.CharField(max_length=255, blank=True, default="")
     test_duration = models.CharField(max_length=20, choices=TestDuration.choices, blank=True, default="")
@@ -328,6 +354,13 @@ class Experiment(models.Model):
     result_variant_b = models.TextField(blank=True, default="")
     comment = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.BACKLOG)
+    technical_task = models.ForeignKey(
+        TaskRequest,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_experiments",
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

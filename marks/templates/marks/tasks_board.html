@@ -359,10 +359,10 @@
                 <div class="small text-muted mb-2">Окончание: {% if task.completed_at %}{{ task.completed_at|date:"d.m.Y H:i" }}{% else %}-{% endif %}</div>
 
                 <div class="small mb-1"><b>Бот и ветки:</b> {{ task.get_bot_branch_text }}</div>
-                {% if task.task_type == 'patch' or task.task_type == 'build' %}
+                {% if task.cjm_url %}
                   <div class="small mb-1"><b>CJM:</b> <a href="{{ task.cjm_url }}" target="_blank" rel="noopener">{{ task.cjm_url }}</a></div>
                 {% endif %}
-                {% if task.task_type == 'mailing' %}
+                {% if task.tz_url %}
                   <div class="small mb-1"><b>ТЗ:</b> <a href="{{ task.tz_url }}" target="_blank" rel="noopener">{{ task.tz_url }}</a></div>
                 {% endif %}
                 {% if task.task_type == 'build' %}

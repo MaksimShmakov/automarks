@@ -75,6 +75,8 @@ def _build_task_details(task):
 
     if task.task_type == TaskRequest.Type.PATCH:
         lines.append(f"CJM: {_safe(task.cjm_url or '-')}")
+        if task.tz_url:
+            lines.append(f"ТЗ: {_safe(task.tz_url)}")
     elif task.task_type == TaskRequest.Type.MAILING:
         lines.append(f"ТЗ: {_safe(task.tz_url or '-')}")
     elif task.task_type == TaskRequest.Type.BUILD:
@@ -85,6 +87,8 @@ def _build_task_details(task):
                 f"CJM: {_safe(task.cjm_url or '-')}",
             ]
         )
+        if task.tz_url:
+            lines.append(f"ТЗ: {_safe(task.tz_url)}")
 
     if task.comment:
         lines.append(f"Комментарий: {_safe(task.comment)}")
