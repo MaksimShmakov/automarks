@@ -1663,13 +1663,18 @@ EXPERIMENT_KIND_FILTER_CHOICES = [
     ("plain", "Без A/B"),
 ]
 
+DEFAULT_EXPERIMENT_DATALENS_URL = (
+    "https://datalens.ru/8tid320t3bvmt-klienty-obshiy-dashbord"
+    "?tab=Kx&state=1fe34562281&utm_referrer=about%3Ablank"
+)
 
-def _build_experiment_card(experiment, option_labels):
+
+def _build_experiment_card(experiment, option_labels, default_dashboard_url):
     selected_options = experiment.ab_test_options or []
     return {
         "item": experiment,
         "ab_option_labels": [option_labels.get(code, code) for code in selected_options],
-        "dashboard_href": (experiment.dashboard_url or "").strip(),
+        "dashboard_href": (experiment.dashboard_url or "").strip() or default_dashboard_url,
     }
 
 
@@ -1810,6 +1815,7 @@ def _experiments_board_context(form, editing_experiment=None, filter_values=None
     }
     option_labels = dict(ExperimentForm.AB_TEST_OPTIONS)
     completion_form = ExperimentCompletionForm()
+    default_dashboard_url = DEFAULT_EXPERIMENT_DATALENS_URL
 
     active_columns = [{**column, "items": []} for column in EXPERIMENT_ACTIVE_COLUMNS]
     library_columns = [{**column, "items": []} for column in EXPERIMENT_LIBRARY_COLUMNS]
@@ -1823,6 +1829,7 @@ def _experiments_board_context(form, editing_experiment=None, filter_values=None
         card = _build_experiment_card(
             experiment=experiment,
             option_labels=option_labels,
+            default_dashboard_url=default_dashboard_url,
         )
         if experiment.status in active_map:
             active_map[experiment.status]["items"].append(card)
@@ -1835,6 +1842,7 @@ def _experiments_board_context(form, editing_experiment=None, filter_values=None
         "active_columns": active_columns,
         "library_columns": library_columns,
         "completion_form": completion_form,
+        "default_dashboard_url": default_dashboard_url,
         "filter_values": filter_values,
         "status_filter_choices": Experiment.Status.choices,
         "kind_filter_choices": EXPERIMENT_KIND_FILTER_CHOICES,
