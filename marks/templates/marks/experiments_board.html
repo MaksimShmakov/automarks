@@ -52,6 +52,20 @@
   .experiment-filter-card .form-label {
     margin-bottom: 0.35rem;
   }
+  .experiment-branch-picker {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    background: #fff;
+  }
+  .experiment-branch-option {
+    margin-bottom: 0.4rem;
+  }
+  .experiment-branch-option:last-child {
+    margin-bottom: 0;
+  }
 </style>
 {% endblock %}
 
@@ -212,7 +226,34 @@
                   placeholder="Поиск по боту, ветке или коду..."
                   autocomplete="off"
                 >
-                {{ form.branch }}
+                <div class="experiment-branch-picker" id="branch-picker-list">
+                  <div class="form-check experiment-branch-option">
+                    <input
+                      class="form-check-input"
+                      type="radio"
+                      name="{{ form.branch.html_name }}"
+                      id="id_branch_empty"
+                      value=""
+                      {% if not form.branch.value %}checked{% endif %}
+                    >
+                    <label class="form-check-label" for="id_branch_empty">Без API-ветки</label>
+                  </div>
+                  {% for branch in branch_filter_options %}
+                    <div class="form-check experiment-branch-option">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="{{ form.branch.html_name }}"
+                        id="id_branch_{{ branch.id }}"
+                        value="{{ branch.id }}"
+                        {% if form.branch.value|stringformat:"s" == branch.id|stringformat:"s" %}checked{% endif %}
+                      >
+                      <label class="form-check-label" for="id_branch_{{ branch.id }}">
+                        {{ branch.bot.title }} / {{ branch.name }} ({{ branch.code }})
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
                 {% if form.branch.help_text %}
                   <div class="form-text">{{ form.branch.help_text }}</div>
                 {% endif %}
@@ -712,8 +753,8 @@
     const durationUsersWrap = document.getElementById("duration-users-wrap");
     const durationDateWrap = document.getElementById("duration-date-wrap");
     const customOptionWrap = document.getElementById("ab-custom-option-wrap");
-    const branchSelect = document.getElementById("id_branch");
     const branchSearchInput = document.getElementById("branch-search-input");
+    const branchPickerList = document.getElementById("branch-picker-list");
     const branchSearchEmpty = document.getElementById("branch-search-empty");
     const completionForm = document.getElementById("experiment-completion-form");
     const completionTitle = document.getElementById("experimentCompletionModalLabel");
@@ -731,7 +772,6 @@
     const statusConfirmBody = document.getElementById("statusConfirmModalBody");
     const statusConfirmSubmit = document.getElementById("statusConfirmModalSubmit");
     let pendingStatusForm = null;
-    let originalBranchOptions = [];
 
     function getCustomCheckbox() {
       return document.querySelector('input[name="ab_test_options"][value="custom"]');
@@ -762,35 +802,18 @@
       customOptionWrap.classList.toggle("d-none", !show);
     }
 
-    function rememberBranchOptions() {
-      if (!branchSelect) return;
-      originalBranchOptions = Array.from(branchSelect.options).map((option) => ({
-        value: option.value,
-        label: option.text,
-      }));
-    }
-
     function filterBranchOptions() {
-      if (!branchSelect || !branchSearchInput) return;
-      if (!originalBranchOptions.length) {
-        rememberBranchOptions();
-      }
-
-      const selectedValue = branchSelect.value;
+      if (!branchPickerList || !branchSearchInput) return;
       const query = (branchSearchInput.value || "").toLowerCase().trim();
-      branchSelect.innerHTML = "";
       let visibleCount = 0;
 
-      originalBranchOptions.forEach((item) => {
-        const isPlaceholder = !item.value;
-        const matches = isPlaceholder || !query || item.label.toLowerCase().includes(query) || item.value === selectedValue;
-        if (!matches) {
-          return;
-        }
-
-        const option = new Option(item.label, item.value, false, item.value === selectedValue);
-        branchSelect.add(option);
-        if (!isPlaceholder) {
+      branchPickerList.querySelectorAll(".experiment-branch-option").forEach((item) => {
+        const input = item.querySelector("input");
+        const isPlaceholder = !!(input && !input.value);
+        const text = (item.textContent || "").toLowerCase();
+        const visible = isPlaceholder || !query || text.includes(query);
+        item.classList.toggle("d-none", !visible);
+        if (visible && !isPlaceholder) {
           visibleCount += 1;
         }
       });
@@ -859,7 +882,6 @@
       item.addEventListener("change", toggleCustomOption);
     });
 
-    rememberBranchOptions();
     toggleABFields();
     toggleTrafficOther();
     toggleDurationFields();

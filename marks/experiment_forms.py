@@ -234,13 +234,13 @@ class ExperimentCompletionForm(forms.Form):
         ),
     )
     result_variant_a = forms.CharField(
+        required=False,
         label="Данные по варианту A",
-        error_messages={"required": "Заполните данные варианта A."},
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
     )
     result_variant_b = forms.CharField(
+        required=False,
         label="Данные по варианту B",
-        error_messages={"required": "Заполните данные варианта B."},
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
     )
     comment = forms.CharField(

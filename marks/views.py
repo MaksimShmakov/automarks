@@ -1908,10 +1908,6 @@ def update_experiment_status(request, experiment_id):
         messages.error(request, "Недопустимый статус эксперимента.")
         return redirect("experiments_board")
 
-    if status_value == Experiment.Status.DRAFT and not (experiment.tz_url or "").strip():
-        messages.error(request, "Чтобы отправить эксперимент в разработку, заполните поле ТЗ.")
-        return redirect("experiments_board")
-
     if status_value == Experiment.Status.IN_PROGRESS and experiment.branch_id:
         if experiment.get_traffic_split_weights() is None:
             messages.error(request, "Для API A/B укажите сплит 50/50, 70/30 или свой в формате 80/20.")

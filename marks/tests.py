@@ -842,7 +842,8 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.result_variant_a, "CR 10%")
         self.assertEqual(experiment.result_variant_b, "CR 14%")
 
-    def test_move_to_draft_requires_tz(self):
+    @patch("marks.views.notify_new_task", return_value=(True, ""))
+    def test_move_to_draft_allows_empty_tz(self, notify_mock):
         experiment = Experiment.objects.create(
             title="Без ТЗ",
             wants_ab_test=True,
@@ -865,9 +866,10 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         experiment.refresh_from_db()
-        self.assertEqual(experiment.status, Experiment.Status.BACKLOG)
-        self.assertIsNone(experiment.technical_task)
-        self.assertContains(response, "Чтобы отправить эксперимент в разработку, заполните поле ТЗ.")
+        self.assertEqual(experiment.status, Experiment.Status.DRAFT)
+        self.assertIsNotNone(experiment.technical_task)
+        self.assertEqual(experiment.technical_task.tz_url, "")
+        notify_mock.assert_called_once_with(experiment.technical_task)
 
     @patch("marks.views.notify_new_task", return_value=(True, ""))
     def test_move_to_draft_creates_task_for_tech_team(self, notify_mock):
@@ -1013,6 +1015,39 @@ class ExperimentBoardTests(TaskBoardBaseTestCase):
         self.assertEqual(experiment.result_variant_a, "CR 10%, CTR 18%")
         self.assertEqual(experiment.result_variant_b, "CR 14%, CTR 22%")
         self.assertEqual(experiment.comment, "Победил вариант B")
+
+    def test_final_status_allows_empty_variant_results(self):
+        experiment = Experiment.objects.create(
+            title="Финал без цифр",
+            wants_ab_test=True,
+            ab_test_options=["start"],
+            metric_impact="CR",
+            comparison_text="A vs B",
+            expected_change="+7%",
+            hypothesis="Проверяем без обязательных цифр",
+            traffic_volume=Experiment.TrafficVolume.SPLIT_50_50,
+            test_duration=Experiment.TestDuration.DAYS_7,
+            created_by=self.admin_user,
+            status=Experiment.Status.IN_PROGRESS,
+        )
+
+        response = self.client.post(
+            reverse("update_experiment_status", kwargs={"experiment_id": experiment.id}),
+            {
+                "status": Experiment.Status.SUCCESS,
+                "start_date": "2026-03-30",
+                "end_date": "2026-04-01",
+                "dashboard_url": "",
+                "result_variant_a": "",
+                "result_variant_b": "",
+                "comment": "",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        experiment.refresh_from_db()
+        self.assertEqual(experiment.status, Experiment.Status.SUCCESS)
 
     def test_finalized_experiment_moves_to_library(self):
         active_experiment = Experiment.objects.create(
