@@ -17,6 +17,15 @@ set +a
 : "${GLOBAL_PGPASSWORD:?}"
 : "${GLOBAL_PGSCHEMA:=activation_data}"
 
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker-compose)
+else
+  echo "Neither 'docker compose' nor 'docker-compose' is available" >&2
+  exit 1
+fi
+
 RAW_SQL="$(mktemp /tmp/automarks_raw_XXXX.sql)"
 PATCHED_SQL="$(mktemp /tmp/automarks_patched_XXXX.sql)"
 SOURCE_TABLES="$(mktemp /tmp/automarks_source_tables_XXXX.txt)"
@@ -48,7 +57,7 @@ trap cleanup EXIT
 
 # Dump local DB data only from docker container (public schema only).
 # We intentionally avoid --clean to keep dependent views in the global DB intact.
-if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+if ! "${COMPOSE_CMD[@]}" exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -Fp --schema=public --data-only --no-owner --no-privileges > "$RAW_SQL"; then
   echo "pg_dump failed" >&2
   rm -f "$RAW_SQL"
@@ -82,7 +91,7 @@ if [ -s "$MISSING_TABLES" ]; then
     TABLE_ARGS+=(--table="public.${table_name}")
   done
 
-  if ! docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  if ! "${COMPOSE_CMD[@]}" exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
     -Fp --schema-only --no-owner --no-privileges "${TABLE_ARGS[@]}" > "$MISSING_SCHEMA_RAW"; then
     echo "pg_dump (schema-only for missing tables) failed" >&2
     exit 1
@@ -124,7 +133,7 @@ fi
 
 # Build source column definitions from the local DB so remote tables can be extended
 # when new Django migrations only add columns to already-synced tables.
-if ! docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -AtF $'\t' -c "
+if ! "${COMPOSE_CMD[@]}" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -AtF $'\t' -c "
 SELECT
   cols.table_name,
   cols.column_name,
