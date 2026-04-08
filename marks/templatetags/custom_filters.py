@@ -1,4 +1,7 @@
 from django import template
+
+from marks.task_time import format_task_datetime
+
 register = template.Library()
 
 
@@ -43,3 +46,11 @@ def has_any_group(user, names: str):
         return user.is_authenticated and user.groups.filter(name__in=list(wanted)).exists()
     except Exception:
         return False
+
+
+@register.filter(name="task_datetime")
+def task_datetime(value, fmt="%d.%m.%Y %H:%M"):
+    try:
+        return format_task_datetime(value, fmt=fmt)
+    except Exception:
+        return "-"

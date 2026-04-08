@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 
 {% block title %}Задачи{% endblock %}
 
@@ -21,6 +22,31 @@
   .counter-card .counter-value {
     font-size: 1.4rem;
     font-weight: 700;
+  }
+  .task-photo-box {
+    border: 1px dashed #adb5bd;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+  }
+  .task-photo-box.is-active {
+    border-color: #0d6efd;
+    background: #eef5ff;
+  }
+  .task-photo-preview {
+    display: none;
+  }
+  .task-photo-preview.is-visible {
+    display: block;
+  }
+  .task-photo-preview img,
+  .task-card-photo {
+    width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+    background: #fff;
   }
 </style>
 {% endblock %}
@@ -119,7 +145,7 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на правку</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_patch_task' %}" class="row g-3" autocomplete="off">
+        <form method="post" action="{% url 'create_patch_task' %}" class="row g-3 task-create-form" autocomplete="off" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
           <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
@@ -163,6 +189,21 @@
             {{ patch_form.comment }}
           </div>
           <div class="col-12">
+            <label class="form-label">Фото</label>
+            <div class="task-photo-box" data-photo-box>
+              {{ patch_form.photo }}
+              <div class="form-text">{{ patch_form.photo.help_text }}</div>
+              {% for error in patch_form.photo.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+              <div class="task-photo-preview mt-3" data-photo-preview>
+                <img src="" alt="Предпросмотр фото">
+                <div class="small text-muted mt-2" data-photo-name></div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-photo-clear>Убрать фото</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
             <label class="form-label">{{ patch_form.deadline.label }}</label>
             {{ patch_form.deadline }}
             {% for error in patch_form.deadline.errors %}
@@ -194,7 +235,7 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на рассылку</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_mailing_task' %}" class="row g-3" autocomplete="off">
+        <form method="post" action="{% url 'create_mailing_task' %}" class="row g-3 task-create-form" autocomplete="off" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
           <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
@@ -238,6 +279,21 @@
             {{ mailing_form.comment }}
           </div>
           <div class="col-12">
+            <label class="form-label">Фото</label>
+            <div class="task-photo-box" data-photo-box>
+              {{ mailing_form.photo }}
+              <div class="form-text">{{ mailing_form.photo.help_text }}</div>
+              {% for error in mailing_form.photo.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+              <div class="task-photo-preview mt-3" data-photo-preview>
+                <img src="" alt="Предпросмотр фото">
+                <div class="small text-muted mt-2" data-photo-name></div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-photo-clear>Убрать фото</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
             <label class="form-label">{{ mailing_form.deadline.label }}</label>
             {{ mailing_form.deadline }}
             {% for error in mailing_form.deadline.errors %}
@@ -269,7 +325,7 @@
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light"><b>Заявка на сборку бота</b></div>
       <div class="card-body">
-        <form method="post" action="{% url 'create_build_task' %}" class="row g-3" autocomplete="off">
+        <form method="post" action="{% url 'create_build_task' %}" class="row g-3 task-create-form" autocomplete="off" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="text" name="fake_username" autocomplete="username" tabindex="-1" class="d-none" aria-hidden="true">
           <input type="password" name="fake_password" autocomplete="current-password" tabindex="-1" class="d-none" aria-hidden="true">
@@ -305,6 +361,21 @@
           <div class="col-12">
             <label class="form-label">{{ build_form.comment.label }}</label>
             {{ build_form.comment }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Фото</label>
+            <div class="task-photo-box" data-photo-box>
+              {{ build_form.photo }}
+              <div class="form-text">{{ build_form.photo.help_text }}</div>
+              {% for error in build_form.photo.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+              <div class="task-photo-preview mt-3" data-photo-preview>
+                <img src="" alt="Предпросмотр фото">
+                <div class="small text-muted mt-2" data-photo-name></div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-photo-clear>Убрать фото</button>
+              </div>
+            </div>
           </div>
           <div class="col-12">
             <label class="form-label">{{ build_form.deadline.label }}</label>
@@ -354,9 +425,9 @@
                 </div>
 
                 <div class="small text-muted mb-1">Создал: {{ task.created_by.username|default:"-" }}</div>
-                <div class="small text-muted mb-1">Создано: {{ task.created_at|date:"d.m.Y H:i" }}</div>
-                <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|date:"d.m.Y H:i" }}</div>
-                <div class="small text-muted mb-2">Окончание: {% if task.completed_at %}{{ task.completed_at|date:"d.m.Y H:i" }}{% else %}-{% endif %}</div>
+                <div class="small text-muted mb-1">Создано: {{ task.created_at|task_datetime }}</div>
+                <div class="small text-muted mb-1">Дедлайн: {{ task.deadline|task_datetime }}</div>
+                <div class="small text-muted mb-2">Окончание: {{ task.completed_at|task_datetime }}</div>
 
                 <div class="small mb-1"><b>Бот и ветки:</b> {{ task.get_bot_branch_text }}</div>
                 {% if task.cjm_url %}
@@ -371,6 +442,13 @@
 
                 {% if task.comment %}
                   <div class="small mt-2"><b>Комментарий:</b> {{ task.comment }}</div>
+                {% endif %}
+                {% if task.photo %}
+                  <div class="mt-3">
+                    <a href="{{ task.photo.url }}" target="_blank" rel="noopener">
+                      <img src="{{ task.photo.url }}" alt="Фото к задаче #{{ task.id }}" class="task-card-photo">
+                    </a>
+                  </div>
                 {% endif %}
 
                 <form method="post" action="{% url 'update_task_status' task.id %}" class="d-flex gap-2 mt-3">
@@ -434,6 +512,74 @@
 
       checkbox.addEventListener("change", updateVisibility);
       updateVisibility();
+    });
+
+    const taskForms = document.querySelectorAll(".task-create-form");
+    taskForms.forEach(function(form) {
+      const fileInput = form.querySelector('input[type="file"][name$="-photo"]');
+      const photoBox = form.querySelector("[data-photo-box]");
+      const preview = form.querySelector("[data-photo-preview]");
+      if (!fileInput || !photoBox || !preview) return;
+
+      const previewImage = preview.querySelector("img");
+      const previewName = preview.querySelector("[data-photo-name]");
+      const clearButton = preview.querySelector("[data-photo-clear]");
+      let previewUrl = null;
+
+      const clearPreviewUrl = function() {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          previewUrl = null;
+        }
+      };
+
+      const renderPreview = function(file) {
+        clearPreviewUrl();
+        if (!file) {
+          preview.classList.remove("is-visible");
+          photoBox.classList.remove("is-active");
+          previewImage.removeAttribute("src");
+          previewName.textContent = "";
+          return;
+        }
+
+        previewUrl = URL.createObjectURL(file);
+        previewImage.src = previewUrl;
+        previewName.textContent = file.name || "image";
+        preview.classList.add("is-visible");
+        photoBox.classList.add("is-active");
+      };
+
+      const assignFile = function(file) {
+        if (!file || typeof DataTransfer === "undefined") return;
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileInput.files = dataTransfer.files;
+        renderPreview(file);
+      };
+
+      fileInput.addEventListener("change", function() {
+        renderPreview(fileInput.files && fileInput.files[0]);
+      });
+
+      clearButton.addEventListener("click", function() {
+        fileInput.value = "";
+        renderPreview(null);
+      });
+
+      form.addEventListener("paste", function(event) {
+        const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+        const imageItem = items.find(function(item) {
+          return item.kind === "file" && item.type && item.type.indexOf("image/") === 0;
+        });
+        if (!imageItem) return;
+
+        const file = imageItem.getAsFile();
+        if (!file) return;
+
+        event.preventDefault();
+        assignFile(file);
+      });
     });
   })();
 </script>

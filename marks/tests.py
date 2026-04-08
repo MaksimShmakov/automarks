@@ -1,10 +1,13 @@
 import io
 import json
 import hashlib
+import shutil
+import tempfile
 from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -12,6 +15,7 @@ from openpyxl import load_workbook
 
 from .forms import BranchForm
 from .models import Bot, Branch, Experiment, Product, TaskRequest, UserProfile
+from .task_time import get_tasks_timezone
 
 
 class TaskBoardBaseTestCase(TestCase):
@@ -72,6 +76,35 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(task.status, TaskRequest.Status.UNREAD)
         self.assertEqual(task.created_by, self.admin_user)
         self.assertEqual(list(task.branches.values_list("id", flat=True)), [self.branch_main.id])
+        notify_mock.assert_called_once_with(task)
+
+    @patch("marks.views.notify_new_task")
+    def test_create_patch_task_saves_photo_and_task_timezone_deadline(self, notify_mock):
+        self.client.force_login(self.admin_user)
+        media_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+        photo = SimpleUploadedFile("task.png", b"fake-image-bytes", content_type="image/png")
+
+        with self.settings(MEDIA_ROOT=media_root, TASKS_TIME_ZONE="Europe/Moscow"):
+            response = self.client.post(
+                reverse("create_patch_task"),
+                {
+                    "patch-branches": [self.branch_main.id],
+                    "patch-cjm_url": "https://example.com/cjm",
+                    "patch-comment": "Комментарий со скрином",
+                    "patch-deadline": "2026-04-08T12:34",
+                    "patch-photo": photo,
+                },
+            )
+            task = TaskRequest.objects.get(task_type=TaskRequest.Type.PATCH)
+            self.assertTrue(task.photo.name.endswith(".png"))
+            self.assertEqual(
+                timezone.localtime(task.deadline, get_tasks_timezone()).strftime("%Y-%m-%dT%H:%M"),
+                "2026-04-08T12:34",
+            )
+
+        self.assertEqual(response.status_code, 302)
+        task.refresh_from_db()
         notify_mock.assert_called_once_with(task)
 
     @patch("marks.views.notify_new_task")
@@ -195,6 +228,30 @@ class TaskBoardActionsTests(TaskBoardBaseTestCase):
         self.assertEqual(kwargs["task"], task)
         self.assertEqual(kwargs["old_status"], TaskRequest.Status.UNREAD)
         self.assertEqual(kwargs["changed_by"], self.admin_user)
+
+    @patch("marks.views.notify_status_change")
+    def test_status_done_never_saves_completed_at_before_created_at(self, notify_mock):
+        task = TaskRequest.objects.create(
+            task_type=TaskRequest.Type.BUILD,
+            build_name="bot + branches",
+            build_token="1234567890",
+            cjm_url="https://example.com/cjm",
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=self.admin_user,
+        )
+        future_created_at = timezone.now() + timedelta(minutes=10)
+        TaskRequest.objects.filter(pk=task.pk).update(created_at=future_created_at)
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("update_task_status", kwargs={"task_id": task.id}),
+            {"status": TaskRequest.Status.DONE},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        task.refresh_from_db()
+        self.assertEqual(task.completed_at, task.created_at)
+        notify_mock.assert_called_once()
 
     @patch("marks.views.notify_done_to_user")
     @patch("marks.views.get_task_tg_username", return_value="test_user")

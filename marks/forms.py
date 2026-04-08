@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from pathlib import Path
 import re
 
 from .models import (
@@ -16,6 +17,7 @@ from .models import (
     TaskRequest,
     TrafficReport,
 )
+from .task_time import TASK_INPUT_FORMATS, parse_task_input_datetime
 
 
 class ProductForm(forms.ModelForm):
@@ -241,6 +243,9 @@ class TagImportForm(forms.Form):
 
 
 class BaseTaskRequestForm(forms.ModelForm):
+    MAX_PHOTO_SIZE = 10 * 1024 * 1024
+    ALLOWED_PHOTO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
     notify_me = forms.BooleanField(
         required=False,
         label="Хочу получить уведомление",
@@ -275,16 +280,20 @@ class BaseTaskRequestForm(forms.ModelForm):
                     field.help_text = "Нет доступных веток. Сначала добавьте их в разделе 'Боты'."
                 continue
             if name == "deadline":
-                field.input_formats = [
-                    "%Y-%m-%dT%H:%M",
-                    "%Y-%m-%d %H:%M",
-                    "%Y-%m-%d %H:%M:%S",
-                    "%d.%m.%Y %H:%M",
-                    "%d.%m.%Y %H:%M:%S",
-                ]
+                field.input_formats = list(TASK_INPUT_FORMATS)
                 field.widget = forms.DateTimeInput(
                     format="%Y-%m-%dT%H:%M",
                     attrs={"type": "datetime-local", "class": "form-control", "autocomplete": "off"},
+                )
+                continue
+            if name == "photo":
+                field.required = False
+                field.help_text = "Можно выбрать файл или вставить изображение через Ctrl+V."
+                field.widget = forms.ClearableFileInput(
+                    attrs={
+                        "class": "form-control",
+                        "accept": "image/*",
+                    }
                 )
                 continue
             if name == "comment":
@@ -318,6 +327,33 @@ class BaseTaskRequestForm(forms.ModelForm):
         obj.task_type = task_type
         return obj
 
+    def clean_deadline(self):
+        raw_value = self.data.get(self.add_prefix("deadline")) or ""
+        if not raw_value.strip():
+            return self.cleaned_data.get("deadline")
+        try:
+            return parse_task_input_datetime(raw_value)
+        except ValueError:
+            raise forms.ValidationError("Укажите дату и время в корректном формате.")
+
+    def clean_photo(self):
+        uploaded = self.cleaned_data.get("photo")
+        if not uploaded:
+            return uploaded
+
+        extension = Path(uploaded.name or "").suffix.lower()
+        if extension not in self.ALLOWED_PHOTO_EXTENSIONS:
+            raise forms.ValidationError("Поддерживаются только изображения: PNG, JPG, WEBP, GIF, BMP.")
+
+        content_type = (getattr(uploaded, "content_type", "") or "").lower()
+        if content_type and not content_type.startswith("image/"):
+            raise forms.ValidationError("Загрузите изображение.")
+
+        if uploaded.size > self.MAX_PHOTO_SIZE:
+            raise forms.ValidationError("Фото должно быть не больше 10 МБ.")
+
+        return uploaded
+
     def clean(self):
         cleaned = super().clean()
         notify_me = bool(cleaned.get("notify_me"))
@@ -342,7 +378,7 @@ class BaseTaskRequestForm(forms.ModelForm):
 class PatchTaskRequestForm(BaseTaskRequestForm):
     class Meta:
         model = TaskRequest
-        fields = ["branches", "cjm_url", "comment", "deadline"]
+        fields = ["branches", "cjm_url", "comment", "photo", "deadline"]
         labels = {
             "branches": "Ветки",
             "cjm_url": "CJM (ссылка)",
@@ -367,7 +403,7 @@ class PatchTaskRequestForm(BaseTaskRequestForm):
 class MailingTaskRequestForm(BaseTaskRequestForm):
     class Meta:
         model = TaskRequest
-        fields = ["branches", "tz_url", "comment", "deadline"]
+        fields = ["branches", "tz_url", "comment", "photo", "deadline"]
         labels = {
             "branches": "Ветки",
             "tz_url": "ТЗ (ссылка)",
@@ -402,7 +438,7 @@ class BuildTaskRequestForm(BaseTaskRequestForm):
 
     class Meta:
         model = TaskRequest
-        fields = ["build_token", "cjm_url", "comment", "deadline"]
+        fields = ["build_token", "cjm_url", "comment", "photo", "deadline"]
         labels = {
             "build_token": "Токен",
             "cjm_url": "CJM (ссылка)",

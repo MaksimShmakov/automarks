@@ -1,5 +1,7 @@
 import re
+from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from django.db import models
 from django.db.models.signals import post_save
@@ -7,6 +9,11 @@ from django.dispatch import receiver
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+
+def task_request_photo_upload_to(instance, filename):
+    extension = Path(filename or "").suffix.lower() or ".bin"
+    return f"task_request_photos/{timezone.now():%Y/%m/%d}/{uuid4().hex}{extension}"
 
 
 class Product(models.Model):
@@ -240,6 +247,7 @@ class TaskRequest(models.Model):
     build_name = models.CharField(max_length=255, blank=True, default="")
     build_token = models.CharField(max_length=255, blank=True, default="")
     comment = models.TextField(blank=True, default="")
+    photo = models.FileField(upload_to=task_request_photo_upload_to, blank=True, default="")
     deadline = models.DateTimeField()
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
@@ -254,11 +262,16 @@ class TaskRequest(models.Model):
         return f"#{self.id} {self.get_task_type_display()}"
 
     def save(self, *args, **kwargs):
+        auto_completed_at = False
         if self.status == self.Status.DONE and self.completed_at is None:
             self.completed_at = timezone.now()
+            auto_completed_at = True
         elif self.status != self.Status.DONE and self.completed_at is not None:
             self.completed_at = None
         super().save(*args, **kwargs)
+        if auto_completed_at and self.status == self.Status.DONE and self.created_at and self.completed_at and self.completed_at < self.created_at:
+            self.completed_at = self.created_at
+            type(self).objects.filter(pk=self.pk).update(completed_at=self.created_at, updated_at=timezone.now())
 
     @staticmethod
     def _bot_branch_label(branch):

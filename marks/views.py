@@ -59,6 +59,7 @@ from .services.task_legacy import (
     set_task_feedback_comment,
     set_task_tg_username,
 )
+from .task_time import build_task_day_window, format_task_datetime, get_tasks_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -1043,10 +1044,11 @@ def _apply_task_filters(tasks_qs, filters):
         tasks_qs = tasks_qs.filter(status=filters["task_status"])
     if filters["bot_id"]:
         tasks_qs = tasks_qs.filter(branches__bot_id=int(filters["bot_id"]))
-    if filters["completed_from"]:
-        tasks_qs = tasks_qs.filter(completed_at__date__gte=filters["completed_from"])
-    if filters["completed_to"]:
-        tasks_qs = tasks_qs.filter(completed_at__date__lte=filters["completed_to"])
+    dt_from, dt_to = build_task_day_window(filters["completed_from"], filters["completed_to"])
+    if dt_from:
+        tasks_qs = tasks_qs.filter(completed_at__gte=dt_from)
+    if dt_to:
+        tasks_qs = tasks_qs.filter(completed_at__lte=dt_to)
     return tasks_qs.distinct()
 
 
@@ -1071,7 +1073,7 @@ def _to_report_dt_str(dt_value, report_tz):
     try:
         return dt_value.astimezone(report_tz).strftime("%d.%m.%Y %H:%M")
     except Exception:
-        return timezone.localtime(dt_value).strftime("%d.%m.%Y %H:%M")
+        return format_task_datetime(dt_value, empty="-")
 
 
 def _build_completed_tasks_excel_bytes(tasks, report_tz):
@@ -1355,9 +1357,9 @@ def export_completed_tasks(request):
             task.get_task_type_display(),
             task.get_status_display(),
             task.created_by.username if task.created_by else "-",
-            timezone.localtime(task.created_at).strftime("%d.%m.%Y %H:%M") if task.created_at else "-",
-            timezone.localtime(task.deadline).strftime("%d.%m.%Y %H:%M") if task.deadline else "-",
-            timezone.localtime(task.completed_at).strftime("%d.%m.%Y %H:%M") if task.completed_at else "-",
+            format_task_datetime(task.created_at),
+            format_task_datetime(task.deadline),
+            format_task_datetime(task.completed_at),
             task.comment or "",
             feedback_map.get(task.id, ""),
             " | ".join(links),
@@ -1470,7 +1472,7 @@ def _handle_task_create(request, form, success_message, invalid_form_key):
 @require_POST
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_patch_task(request):
-    form = PatchTaskRequestForm(request.POST, prefix="patch")
+    form = PatchTaskRequestForm(request.POST, request.FILES, prefix="patch")
     return _handle_task_create(
         request,
         form,
@@ -1483,7 +1485,7 @@ def create_patch_task(request):
 @require_POST
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_mailing_task(request):
-    form = MailingTaskRequestForm(request.POST, prefix="mailing")
+    form = MailingTaskRequestForm(request.POST, request.FILES, prefix="mailing")
     return _handle_task_create(
         request,
         form,
@@ -1496,7 +1498,7 @@ def create_mailing_task(request):
 @require_POST
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def create_build_task(request):
-    form = BuildTaskRequestForm(request.POST, prefix="build")
+    form = BuildTaskRequestForm(request.POST, request.FILES, prefix="build")
     return _handle_task_create(
         request,
         form,
@@ -1729,7 +1731,7 @@ def _apply_experiment_filters(queryset, filter_values):
 def _derive_experiment_task_deadline(experiment):
     for value in (experiment.start_date, experiment.duration_end_date, experiment.end_date):
         if value:
-            return timezone.make_aware(datetime.combine(value, time(hour=12)))
+            return timezone.make_aware(datetime.combine(value, time(hour=12)), get_tasks_timezone())
     return timezone.now() + timedelta(days=3)
 
 

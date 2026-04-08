@@ -7,9 +7,9 @@ from urllib import parse, request
 import json
 
 from django.conf import settings
-from django.utils import timezone
 
 from ..models import TaskRequest
+from ..task_time import format_task_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -26,28 +26,14 @@ def _safe(value):
 
 
 def _format_datetime(dt):
-    if not dt:
-        return "-"
-    try:
-        if timezone.is_naive(dt):
-            dt = timezone.make_aware(dt, timezone.get_current_timezone())
-        dt = timezone.localtime(dt)
-    except Exception:
-        pass
-    return dt.strftime("%d.%m.%Y %H:%M")
+    return format_task_datetime(dt)
 
 
 def _format_deadline(value):
     if not value:
         return "-"
     if isinstance(value, dt_datetime):
-        try:
-            if timezone.is_naive(value):
-                value = timezone.make_aware(value, timezone.get_current_timezone())
-            value = timezone.localtime(value)
-        except Exception:
-            pass
-        return value.strftime("%d.%m.%Y %H:%M")
+        return format_task_datetime(value)
     return value.strftime("%d.%m.%Y")
 
 
@@ -92,6 +78,8 @@ def _build_task_details(task):
 
     if task.comment:
         lines.append(f"Комментарий: {_safe(task.comment)}")
+    if task.photo:
+        lines.append("Фото: приложено")
     return "\n".join(lines)
 
 
