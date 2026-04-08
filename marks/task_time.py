@@ -18,7 +18,6 @@ TASK_DATETIME_FORMAT = "%d.%m.%Y %H:%M"
 def get_tasks_timezone():
     tz_name = (
         getattr(settings, "TASKS_TIME_ZONE", "")
-        or getattr(settings, "WEEKLY_TASKS_REPORT_TZ", "")
         or getattr(settings, "TIME_ZONE", "UTC")
         or "UTC"
     ).strip()
