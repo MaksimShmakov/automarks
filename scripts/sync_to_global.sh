@@ -122,13 +122,12 @@ SQL
       "$MISSING_SCHEMA_RAW"
   } > "$MISSING_SCHEMA_PATCHED"
 
-  docker run --rm \
+  docker run --rm -i \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
-    -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 -f "$MISSING_SCHEMA_PATCHED"
+    -v ON_ERROR_STOP=1 < "$MISSING_SCHEMA_PATCHED"
 fi
 
 # Build source column definitions from the local DB so remote tables can be extended
@@ -209,13 +208,12 @@ SQL
     ' schema="$GLOBAL_PGSCHEMA" "$MISSING_COLUMNS" "$SOURCE_COLUMNS_RAW"
   } > "$MISSING_COLUMNS_SQL"
 
-  docker run --rm \
+  docker run --rm -i \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
-    -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 -f "$MISSING_COLUMNS_SQL"
+    -v ON_ERROR_STOP=1 < "$MISSING_COLUMNS_SQL"
 fi
 
 # Build truncate list from source tables.
@@ -253,10 +251,9 @@ SQL
 # Restore into global DB
 # Refreshes data in GLOBAL_PGSCHEMA without dropping table structure/views.
 
-docker run --rm \
+docker run --rm -i \
   -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
   -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
-  -v /tmp:/tmp \
   postgres:16-alpine \
   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-  -v ON_ERROR_STOP=1 -f "$PATCHED_SQL"
+  -v ON_ERROR_STOP=1 < "$PATCHED_SQL"
