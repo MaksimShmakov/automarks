@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Запись на услугу</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Экран 1: Выбор услуги -->
+        <div id="screen-services" class="screen active">
+            <h1>Выберите услугу</h1>
+            <div id="services-list" class="cards-list"></div>
+        </div>
+
+        <!-- Экран 2: Выбор даты и времени -->
+        <div id="screen-slots" class="screen">
+            <button class="back-btn" onclick="showScreen('services')">&larr; Назад</button>
+            <h1>Выберите дату и время</h1>
+            <div id="selected-service-info" class="info-badge"></div>
+            <div id="slots-list" class="slots-container"></div>
+        </div>
+
+        <!-- Экран 3: Подтверждение -->
+        <div id="screen-confirm" class="screen">
+            <button class="back-btn" onclick="showScreen('slots')">&larr; Назад</button>
+            <h1>Подтверждение записи</h1>
+            <div id="confirm-details" class="confirm-card"></div>
+            <button id="pay-btn" class="primary-btn" onclick="submitBooking()">
+                💳 Оплатить
+            </button>
+        </div>
+
+        <!-- Экран 4: Успех -->
+        <div id="screen-success" class="screen">
+            <div class="success-container">
+                <div class="success-icon">✅</div>
+                <h1>Вы записаны!</h1>
+                <p id="success-message"></p>
+                <button class="primary-btn" onclick="Telegram.WebApp.close()">Закрыть</button>
+            </div>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
