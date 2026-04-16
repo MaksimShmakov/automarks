@@ -122,13 +122,16 @@ SQL
       "$MISSING_SCHEMA_RAW"
   } > "$MISSING_SCHEMA_PATCHED"
 
+  # ON_ERROR_STOP=0: FK constraints referencing existing tables may fail
+  # (e.g. referenced table lacks PK). Tables/indexes are created anyway;
+  # FKs are not needed for the data-only sync that follows.
   docker run --rm \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
     -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 -f "$MISSING_SCHEMA_PATCHED"
+    -v ON_ERROR_STOP=0 -f "$MISSING_SCHEMA_PATCHED"
 fi
 
 # Build source column definitions from the local DB so remote tables can be extended
