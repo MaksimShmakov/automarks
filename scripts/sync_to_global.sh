@@ -78,7 +78,7 @@ docker run --rm \
   -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
   postgres:16-alpine \
   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-  -At -c "SELECT tablename FROM pg_tables WHERE schemaname = '$GLOBAL_PGSCHEMA' ORDER BY 1;" > "$REMOTE_TABLES"
+  -At -c "SELECT tablename FROM pg_tables WHERE schemaname = '$GLOBAL_PGSCHEMA';" | sort -u > "$REMOTE_TABLES"
 
 # Determine missing tables in remote schema.
 comm -23 "$SOURCE_TABLES" "$REMOTE_TABLES" > "$MISSING_TABLES"
@@ -122,13 +122,16 @@ SQL
       "$MISSING_SCHEMA_RAW"
   } > "$MISSING_SCHEMA_PATCHED"
 
+  # ON_ERROR_STOP=0: FK constraints referencing existing tables may fail
+  # (e.g. referenced table lacks PK). Tables/indexes are created anyway;
+  # FKs are not needed for the data-only sync that follows.
   docker run --rm \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
     -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 -f "$MISSING_SCHEMA_PATCHED"
+    -v ON_ERROR_STOP=0 -f "$MISSING_SCHEMA_PATCHED"
 fi
 
 # Build source column definitions from the local DB so remote tables can be extended
@@ -171,7 +174,7 @@ JOIN information_schema.tables AS tbls
  AND tbls.table_name = cols.table_name
 WHERE cols.table_schema = '$GLOBAL_PGSCHEMA'
   AND tbls.table_type = 'BASE TABLE'
-ORDER BY 1;" > "$REMOTE_COLUMNS"
+ORDER BY 1;" | sort -u > "$REMOTE_COLUMNS"
 
 comm -23 "$SOURCE_COLUMN_KEYS" "$REMOTE_COLUMNS" > "$MISSING_COLUMNS"
 
