@@ -78,7 +78,7 @@ docker run --rm \
   -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
   postgres:16-alpine \
   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-  -At -c "SELECT tablename FROM pg_tables WHERE schemaname = '$GLOBAL_PGSCHEMA' ORDER BY 1;" > "$REMOTE_TABLES"
+  -At -c "SELECT tablename FROM pg_tables WHERE schemaname = '$GLOBAL_PGSCHEMA';" | sort -u > "$REMOTE_TABLES"
 
 # Determine missing tables in remote schema.
 comm -23 "$SOURCE_TABLES" "$REMOTE_TABLES" > "$MISSING_TABLES"
@@ -122,12 +122,13 @@ SQL
       "$MISSING_SCHEMA_RAW"
   } > "$MISSING_SCHEMA_PATCHED"
 
-  docker run --rm -i \
+  docker run --rm \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
+    -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 < "$MISSING_SCHEMA_PATCHED"
+    -v ON_ERROR_STOP=1 -f "$MISSING_SCHEMA_PATCHED"
 fi
 
 # Build source column definitions from the local DB so remote tables can be extended
@@ -170,7 +171,7 @@ JOIN information_schema.tables AS tbls
  AND tbls.table_name = cols.table_name
 WHERE cols.table_schema = '$GLOBAL_PGSCHEMA'
   AND tbls.table_type = 'BASE TABLE'
-ORDER BY 1;" > "$REMOTE_COLUMNS"
+ORDER BY 1;" | sort -u > "$REMOTE_COLUMNS"
 
 comm -23 "$SOURCE_COLUMN_KEYS" "$REMOTE_COLUMNS" > "$MISSING_COLUMNS"
 
@@ -208,12 +209,13 @@ SQL
     ' schema="$GLOBAL_PGSCHEMA" "$MISSING_COLUMNS" "$SOURCE_COLUMNS_RAW"
   } > "$MISSING_COLUMNS_SQL"
 
-  docker run --rm -i \
+  docker run --rm \
     -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
     -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
+    -v /tmp:/tmp \
     postgres:16-alpine \
     psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-    -v ON_ERROR_STOP=1 < "$MISSING_COLUMNS_SQL"
+    -v ON_ERROR_STOP=1 -f "$MISSING_COLUMNS_SQL"
 fi
 
 # Build truncate list from source tables.
@@ -251,9 +253,10 @@ SQL
 # Restore into global DB
 # Refreshes data in GLOBAL_PGSCHEMA without dropping table structure/views.
 
-docker run --rm -i \
+docker run --rm \
   -e PGPASSWORD="$GLOBAL_PGPASSWORD" \
   -e PGSSLMODE="${GLOBAL_PGSSLMODE:-require}" \
+  -v /tmp:/tmp \
   postgres:16-alpine \
   psql -h "$GLOBAL_PGHOST" -p "$GLOBAL_PGPORT" -U "$GLOBAL_PGUSER" -d "$GLOBAL_PGDB" \
-  -v ON_ERROR_STOP=1 < "$PATCHED_SQL"
+  -v ON_ERROR_STOP=1 -f "$PATCHED_SQL"
