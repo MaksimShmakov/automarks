@@ -14,7 +14,17 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from .forms import BranchForm
-from .models import Bot, Branch, Experiment, Product, TaskRequest, UserProfile
+from .mailing_split import MailingSplitError, assign_variant_for_recipient
+from .models import (
+    Bot,
+    Branch,
+    Experiment,
+    MailingExperiment,
+    MailingVariant,
+    Product,
+    TaskRequest,
+    UserProfile,
+)
 from .task_time import get_tasks_timezone
 
 
@@ -1164,3 +1174,76 @@ class BranchFormTests(TaskBoardBaseTestCase):
         form = BranchForm(bot=self.bot)
 
         self.assertEqual(form.initial["code"], "ell03")
+
+
+class MailingSplitAssignmentTests(TestCase):
+    def _make_experiment(self, weights):
+        product = Product.objects.create(name=f"P-{Product.objects.count() + 1}")
+        bot = Bot.objects.create(name=f"bot-{Bot.objects.count() + 1}", product=product)
+        experiment = MailingExperiment.objects.create(
+            title="Test split",
+            bot=bot,
+            status=MailingExperiment.Status.IN_PROGRESS,
+        )
+        labels = ["A", "B", "C", "D"]
+        for label, weight in zip(labels, weights):
+            MailingVariant.objects.create(
+                experiment=experiment,
+                label=label,
+                weight=weight,
+            )
+        return experiment
+
+    def test_assignment_is_deterministic_for_same_external_id(self):
+        experiment = self._make_experiment([50, 50])
+        first = assign_variant_for_recipient(experiment, "user-123")
+        for _ in range(20):
+            self.assertEqual(
+                assign_variant_for_recipient(experiment, "user-123").pk,
+                first.pk,
+            )
+
+    def test_distribution_matches_50_50(self):
+        experiment = self._make_experiment([50, 50])
+        total = 10000
+        counts = {"A": 0, "B": 0}
+        for i in range(total):
+            variant = assign_variant_for_recipient(experiment, f"user-{i}")
+            counts[variant.label] += 1
+        for label, share in counts.items():
+            ratio = share / total
+            self.assertAlmostEqual(
+                ratio,
+                0.5,
+                delta=0.03,
+                msg=f"variant {label} ratio {ratio:.4f} not within 3% of 0.5",
+            )
+
+    def test_distribution_matches_70_30(self):
+        experiment = self._make_experiment([70, 30])
+        total = 10000
+        counts = {"A": 0, "B": 0}
+        for i in range(total):
+            variant = assign_variant_for_recipient(experiment, f"user-{i}")
+            counts[variant.label] += 1
+        expectations = {"A": 0.7, "B": 0.3}
+        for label, expected in expectations.items():
+            ratio = counts[label] / total
+            self.assertAlmostEqual(
+                ratio,
+                expected,
+                delta=0.03,
+                msg=f"variant {label} ratio {ratio:.4f} not within 3% of {expected}",
+            )
+
+    def test_empty_variants_raises(self):
+        product = Product.objects.create(name="P-empty")
+        bot = Bot.objects.create(name="bot-empty", product=product)
+        experiment = MailingExperiment.objects.create(title="No variants", bot=bot)
+        with self.assertRaises(MailingSplitError):
+            assign_variant_for_recipient(experiment, "user-1")
+
+    def test_zero_total_weight_raises(self):
+        experiment = self._make_experiment([0, 0])
+        with self.assertRaises(MailingSplitError):
+            assign_variant_for_recipient(experiment, "user-1")
