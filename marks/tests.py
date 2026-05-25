@@ -19,6 +19,7 @@ from .mailing_split import (
     apply_split_weights,
     assign_variant_for_recipient,
     import_recipients,
+    parse_recipient_ids,
 )
 from .models import (
     Bot,
@@ -1418,3 +1419,65 @@ class ApplySplitWeightsTests(TestCase):
         ratio_b = summary["variants"].get("B", 0) / total
         self.assertAlmostEqual(ratio_a, 0.7, delta=0.03)
         self.assertAlmostEqual(ratio_b, 0.3, delta=0.03)
+
+
+class RecipientFileParseTests(TestCase):
+    def test_plain_txt_one_id_per_line(self):
+        text = "123\n456\n789\n"
+        self.assertEqual(parse_recipient_ids(text), ["123", "456", "789"])
+
+    def test_csv_with_header_user_id(self):
+        text = "user_id\n123\n456\n"
+        self.assertEqual(parse_recipient_ids(text), ["123", "456"])
+
+    def test_csv_without_header_first_row_is_id(self):
+        text = "100,note\n200,note\n300,note\n"
+        self.assertEqual(parse_recipient_ids(text), ["100", "200", "300"])
+
+    def test_csv_multiple_columns_takes_first(self):
+        text = "id,name,score\n111,Alice,7\n222,Bob,9\n"
+        self.assertEqual(parse_recipient_ids(text), ["111", "222"])
+
+    def test_blank_and_whitespace_lines_are_cleaned(self):
+        text = "123\n\n   \n  456  \n789"
+        self.assertEqual(parse_recipient_ids(text), ["123", "456", "789"])
+
+    def test_crlf_line_endings(self):
+        text = "111\r\n222\r\n333\r\n"
+        self.assertEqual(parse_recipient_ids(text), ["111", "222", "333"])
+
+    def test_empty_text_returns_empty(self):
+        self.assertEqual(parse_recipient_ids(""), [])
+        self.assertEqual(parse_recipient_ids(None), [])
+
+    def test_header_only_returns_empty(self):
+        self.assertEqual(parse_recipient_ids("user_id\n"), [])
+        self.assertEqual(parse_recipient_ids("external_id\n\n"), [])
+
+    def test_semicolon_csv_is_supported(self):
+        text = "telegram_id;name\n555;Anna\n666;Boris\n"
+        self.assertEqual(parse_recipient_ids(text), ["555", "666"])
+
+    def test_parse_then_import_pipeline(self):
+        product = Product.objects.create(name="P-parse")
+        bot = Bot.objects.create(name="bot-parse", product=product)
+        experiment = MailingExperiment.objects.create(title="Parse pipeline", bot=bot)
+        for label, weight in [("A", 50), ("B", 50)]:
+            MailingVariant.objects.create(
+                experiment=experiment, label=label, weight=weight,
+            )
+
+        text = "user_id,note\n" + "\n".join(f"{i},x" for i in range(40))
+        ids = parse_recipient_ids(text)
+        self.assertEqual(len(ids), 40)
+        self.assertEqual(ids[0], "0")
+        self.assertEqual(ids[-1], "39")
+
+        summary = import_recipients(experiment, ids)
+        self.assertEqual(summary["processed"], 40)
+        self.assertEqual(summary["created"], 40)
+        self.assertEqual(summary["skipped"], 0)
+        self.assertEqual(sum(summary["variants"].values()), 40)
+        self.assertEqual(
+            MailingRecipient.objects.filter(experiment=experiment).count(), 40,
+        )

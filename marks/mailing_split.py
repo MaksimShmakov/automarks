@@ -1,5 +1,7 @@
+import csv as csv_module
 import hashlib
 from collections import Counter
+from io import StringIO
 
 from django.db import transaction
 
@@ -112,3 +114,49 @@ def apply_split_weights(experiment):
             variant.save(update_fields=["weight"])
             assigned[variant.label] = int(weight)
     return assigned
+
+
+def _looks_like_header(value):
+    stripped = (value or "").strip()
+    if not stripped:
+        return False
+    return not any(ch.isdigit() for ch in stripped)
+
+
+def parse_recipient_ids(raw_text):
+    if not raw_text:
+        return []
+
+    lines = raw_text.splitlines()
+    non_empty = [ln for ln in lines if ln.strip()]
+    if not non_empty:
+        return []
+
+    has_comma = any("," in ln for ln in non_empty)
+    has_semi = any(";" in ln for ln in non_empty)
+
+    if has_comma or has_semi:
+        delimiter = ";" if has_semi and not has_comma else ","
+        reader = csv_module.reader(StringIO(raw_text), delimiter=delimiter)
+        rows = [
+            row
+            for row in reader
+            if any((cell or "").strip() for cell in row)
+        ]
+        if not rows:
+            return []
+        if _looks_like_header(rows[0][0] if rows[0] else ""):
+            rows = rows[1:]
+        result = []
+        for row in rows:
+            if not row:
+                continue
+            value = (row[0] or "").strip()
+            if value:
+                result.append(value)
+        return result
+
+    cleaned = [ln.strip() for ln in non_empty]
+    if cleaned and _looks_like_header(cleaned[0]):
+        cleaned = cleaned[1:]
+    return cleaned
