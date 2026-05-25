@@ -11,6 +11,10 @@ from .models import (
     UserProfile,
     TaskRequest,
     Experiment,
+    MailingExperiment,
+    MailingVariant,
+    MailingRecipient,
+    MailingVariantMetric,
 )
 
 
@@ -88,3 +92,30 @@ class ExperimentAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "status", "start_date", "end_date", "wants_ab_test", "created_by", "created_at", "updated_at")
     list_filter = ("status", "wants_ab_test", "traffic_volume", "test_duration")
     search_fields = ("title", "metric_impact", "expected_change", "hypothesis", "comment", "result_variant_a", "result_variant_b")
+
+
+@admin.register(MailingExperiment)
+class MailingExperimentAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "bot", "test_dimension", "traffic_split", "status", "start_date", "end_date", "created_at")
+    list_filter = ("status", "test_dimension", "traffic_split")
+    search_fields = ("title", "hypothesis", "comment")
+
+
+@admin.register(MailingVariant)
+class MailingVariantAdmin(admin.ModelAdmin):
+    list_display = ("id", "experiment", "label", "weight", "send_time", "created_at")
+    list_filter = ("experiment",)
+    search_fields = ("label", "message_text", "offer_text")
+
+
+@admin.register(MailingRecipient)
+class MailingRecipientAdmin(admin.ModelAdmin):
+    list_display = ("id", "experiment", "external_id", "assigned_variant", "imported_at")
+    list_filter = ("experiment", "assigned_variant")
+    search_fields = ("external_id",)
+
+
+@admin.register(MailingVariantMetric)
+class MailingVariantMetricAdmin(admin.ModelAdmin):
+    list_display = ("id", "variant", "sent", "delivered", "clicks", "conversions", "updated_at")
+    search_fields = ("variant__label",)

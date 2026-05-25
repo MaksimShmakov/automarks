@@ -493,3 +493,149 @@ class UserProfile(models.Model):
 def create_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
+
+
+class MailingExperiment(models.Model):
+    class Status(models.TextChoices):
+        BACKLOG = "backlog", "Подготовка"
+        DRAFT = "draft", "Разработка"
+        IN_PROGRESS = "in_progress", "В процессе"
+        COMPLETED = "completed", "Завершен"
+        SUCCESS = "success", "Успех"
+        FAILED = "failed", "Провал"
+        RETEST = "retest", "Нужен ретест"
+
+    class TestDimension(models.TextChoices):
+        TEXT = "text", "Текст сообщения"
+        OFFER = "offer", "Оффер"
+        SEND_TIME = "send_time", "Время отправки"
+
+    class TrafficSplit(models.TextChoices):
+        SPLIT_50_50 = "50_50", "50/50"
+        SPLIT_70_30 = "70_30", "70/30"
+        OTHER = "other", "Другое"
+
+    title = models.CharField(max_length=255, blank=True, default="")
+    hypothesis = models.TextField(blank=True, default="")
+    bot = models.ForeignKey(
+        Bot,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mailing_experiments",
+    )
+    test_dimension = models.CharField(
+        max_length=20,
+        choices=TestDimension.choices,
+        blank=True,
+        default="",
+    )
+    traffic_split = models.CharField(
+        max_length=20,
+        choices=TrafficSplit.choices,
+        blank=True,
+        default="",
+    )
+    traffic_split_other = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.BACKLOG,
+    )
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    winner_variant = models.ForeignKey(
+        "MailingVariant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="winner_of",
+    )
+    comment = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mailing_experiments",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        name = self.title or f"Рассылка АБ #{self.id}"
+        return f"{name} ({self.get_status_display()})"
+
+
+class MailingVariant(models.Model):
+    experiment = models.ForeignKey(
+        MailingExperiment,
+        on_delete=models.CASCADE,
+        related_name="variants",
+    )
+    label = models.CharField(max_length=20)
+    weight = models.PositiveIntegerField()
+    message_text = models.TextField(blank=True, default="")
+    offer_text = models.TextField(blank=True, null=True)
+    send_time = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["experiment_id", "label", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("experiment", "label"),
+                name="uniq_mailingvariant_experiment_label",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.experiment_id}/{self.label}"
+
+
+class MailingRecipient(models.Model):
+    experiment = models.ForeignKey(
+        MailingExperiment,
+        on_delete=models.CASCADE,
+        related_name="recipients",
+    )
+    external_id = models.CharField(max_length=255)
+    assigned_variant = models.ForeignKey(
+        MailingVariant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recipients",
+    )
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["experiment_id", "external_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("experiment", "external_id"),
+                name="uniq_mailingrecipient_experiment_external_id",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.experiment_id}:{self.external_id}"
+
+
+class MailingVariantMetric(models.Model):
+    variant = models.OneToOneField(
+        MailingVariant,
+        on_delete=models.CASCADE,
+        related_name="metric",
+    )
+    sent = models.PositiveIntegerField(default=0)
+    delivered = models.PositiveIntegerField(default=0)
+    clicks = models.PositiveIntegerField(default=0)
+    conversions = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"metric/{self.variant_id}"
