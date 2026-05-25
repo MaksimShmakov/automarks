@@ -80,3 +80,35 @@ def import_recipients(experiment, external_ids):
 
     summary["variants"] = dict(variant_counts)
     return summary
+
+
+def apply_split_weights(experiment):
+    from .models import Experiment
+
+    weights = Experiment.parse_traffic_split(
+        experiment.traffic_split, experiment.traffic_split_other,
+    )
+    if weights is None:
+        raise MailingSplitError(
+            f"MailingExperiment #{experiment.pk}: cannot parse traffic_split "
+            f"({experiment.traffic_split!r}, other={experiment.traffic_split_other!r})."
+        )
+
+    variants = list(experiment.variants.all().order_by("label", "id"))
+    if not variants:
+        raise MailingSplitError(
+            f"MailingExperiment #{experiment.pk} has no variants."
+        )
+    if len(variants) != len(weights):
+        raise MailingSplitError(
+            f"MailingExperiment #{experiment.pk}: split has {len(weights)} weight(s), "
+            f"but experiment has {len(variants)} variant(s)."
+        )
+
+    assigned = {}
+    with transaction.atomic():
+        for variant, weight in zip(variants, weights):
+            variant.weight = int(weight)
+            variant.save(update_fields=["weight"])
+            assigned[variant.label] = int(weight)
+    return assigned

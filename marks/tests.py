@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from .forms import BranchForm
 from .mailing_split import (
     MailingSplitError,
+    apply_split_weights,
     assign_variant_for_recipient,
     import_recipients,
 )
@@ -1344,3 +1345,76 @@ class MailingRecipientImportTests(TestCase):
         self.assertEqual(
             sum(second["variants"].values()), second["processed"],
         )
+
+
+class ApplySplitWeightsTests(TestCase):
+    def _make_experiment(self, traffic_split, traffic_split_other="", labels=("A", "B")):
+        product = Product.objects.create(name=f"P-split-{Product.objects.count() + 1}")
+        bot = Bot.objects.create(name=f"bot-split-{Bot.objects.count() + 1}", product=product)
+        experiment = MailingExperiment.objects.create(
+            title="Split test",
+            bot=bot,
+            traffic_split=traffic_split,
+            traffic_split_other=traffic_split_other,
+        )
+        for label in labels:
+            MailingVariant.objects.create(
+                experiment=experiment, label=label, weight=1,
+            )
+        return experiment
+
+    def test_50_50_assigns_equal_weights(self):
+        experiment = self._make_experiment(MailingExperiment.TrafficSplit.SPLIT_50_50)
+        result = apply_split_weights(experiment)
+        self.assertEqual(result, {"A": 50, "B": 50})
+
+        weights = {
+            v.label: v.weight
+            for v in experiment.variants.all().order_by("label", "id")
+        }
+        self.assertEqual(weights, {"A": 50, "B": 50})
+
+    def test_70_30_assigns_weights_by_stable_order(self):
+        experiment = self._make_experiment(MailingExperiment.TrafficSplit.SPLIT_70_30)
+        result = apply_split_weights(experiment)
+        self.assertEqual(result, {"A": 70, "B": 30})
+
+        a = experiment.variants.get(label="A")
+        b = experiment.variants.get(label="B")
+        self.assertEqual(a.weight, 70)
+        self.assertEqual(b.weight, 30)
+
+    def test_other_custom_split_assigns_parsed_weights(self):
+        experiment = self._make_experiment(
+            MailingExperiment.TrafficSplit.OTHER, traffic_split_other="80/20",
+        )
+        result = apply_split_weights(experiment)
+        self.assertEqual(result, {"A": 80, "B": 20})
+
+    def test_mismatch_between_split_size_and_variant_count_raises(self):
+        experiment = self._make_experiment(
+            MailingExperiment.TrafficSplit.SPLIT_50_50, labels=("A", "B", "C"),
+        )
+        with self.assertRaises(MailingSplitError):
+            apply_split_weights(experiment)
+
+    def test_unparseable_split_raises(self):
+        experiment = self._make_experiment(
+            MailingExperiment.TrafficSplit.OTHER, traffic_split_other="not-a-split",
+        )
+        with self.assertRaises(MailingSplitError):
+            apply_split_weights(experiment)
+
+    def test_assign_variant_uses_applied_weights(self):
+        experiment = self._make_experiment(MailingExperiment.TrafficSplit.SPLIT_70_30)
+        apply_split_weights(experiment)
+
+        total = 10000
+        ids = [f"u-{i}" for i in range(total)]
+        summary = import_recipients(experiment, ids)
+
+        self.assertEqual(summary["processed"], total)
+        ratio_a = summary["variants"].get("A", 0) / total
+        ratio_b = summary["variants"].get("B", 0) / total
+        self.assertAlmostEqual(ratio_a, 0.7, delta=0.03)
+        self.assertAlmostEqual(ratio_b, 0.3, delta=0.03)
