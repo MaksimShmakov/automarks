@@ -2,7 +2,7 @@ from django.urls import path
 from django.shortcuts import redirect
 from django.contrib.auth import views as auth_views
 from django.views.decorators.cache import never_cache
-from marks import views, views_products
+from marks import views, views_products, views_mailing
 
 
 def root_redirect(request):
@@ -58,4 +58,6 @@ urlpatterns = [
     path("product/<int:product_id>/reports/", views.product_reports, name="product_reports"),
     path("update_field/", views.update_field, name="update_field"),
     path("telegram/webhook/<str:webhook_key>/", views.telegram_webhook, name="telegram_webhook"),
+    path("mailing-experiments/", views_mailing.mailing_experiments_board, name="mailing_experiments_board"),
+    path("mailing-experiments/create/", views_mailing.mailing_experiment_create, name="mailing_experiment_create"),
 ]

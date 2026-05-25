@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}АБ-тесты рассылок{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mailing-column {
+    min-height: 100%;
+  }
+  .mailing-column .card-body {
+    background: #f8f9fa;
+  }
+  .mailing-item {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .mailing-item .card-body {
+    padding: 0.9rem;
+  }
+  .mailing-item h5 {
+    font-size: 1rem;
+  }
+  .mailing-text {
+    white-space: pre-line;
+  }
+  .mailing-empty {
+    border: 1px dashed rgba(0, 0, 0, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: #fff;
+  }
+  .mailing-meta {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: #495057;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="mb-0">АБ-тесты рассылок</h2>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'mailing_experiment_create' %}" class="btn btn-primary btn-sm">
+      + Новый эксперимент
+    </a>
+  </div>
+</div>
+
+<h5 class="text-muted mb-2">Активные</h5>
+<div class="row g-3 mb-4">
+  {% for column in active_columns %}
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card shadow-sm mailing-column h-100">
+        <div class="card-header bg-{{ column.color }} text-white d-flex justify-content-between align-items-center">
+          <b>{{ column.title }}</b>
+          <span class="badge bg-light text-dark">{{ column.items|length }}</span>
+        </div>
+        <div class="card-body d-flex flex-column gap-3">
+          {% for experiment in column.items %}
+            <div class="card mailing-item">
+              <div class="card-body">
+                <h5 class="mb-2">{{ experiment.title|default:"(без названия)" }}</h5>
+                <div class="mailing-meta mb-2">
+                  {% if experiment.bot %}
+                    <div><b>Бот:</b> {{ experiment.bot.title }}</div>
+                  {% endif %}
+                  {% if experiment.test_dimension %}
+                    <div><b>Тестируем:</b> {{ experiment.get_test_dimension_display }}</div>
+                  {% endif %}
+                  {% if experiment.traffic_split %}
+                    <div>
+                      <b>Сплит:</b>
+                      {% if experiment.traffic_split == 'other' %}
+                        {{ experiment.traffic_split_other|default:"—" }}
+                      {% else %}
+                        {{ experiment.get_traffic_split_display }}
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  {% if experiment.start_date or experiment.end_date %}
+                    <div>
+                      <b>Период:</b>
+                      {{ experiment.start_date|default:"—" }} → {{ experiment.end_date|default:"—" }}
+                    </div>
+                  {% endif %}
+                </div>
+                {% if experiment.hypothesis %}
+                  <div class="mailing-text small text-muted">{{ experiment.hypothesis }}</div>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div class="mailing-empty text-muted small">Пусто</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<h5 class="text-muted mb-2">Библиотека итогов</h5>
+<div class="row g-3">
+  {% for column in library_columns %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="card shadow-sm mailing-column h-100">
+        <div class="card-header bg-{{ column.color }} text-white d-flex justify-content-between align-items-center">
+          <b>{{ column.title }}</b>
+          <span class="badge bg-light text-dark">{{ column.items|length }}</span>
+        </div>
+        <div class="card-body d-flex flex-column gap-3">
+          {% for experiment in column.items %}
+            <div class="card mailing-item">
+              <div class="card-body">
+                <h5 class="mb-2">{{ experiment.title|default:"(без названия)" }}</h5>
+                <div class="mailing-meta">
+                  {% if experiment.bot %}
+                    <div><b>Бот:</b> {{ experiment.bot.title }}</div>
+                  {% endif %}
+                  {% if experiment.test_dimension %}
+                    <div><b>Тестируем:</b> {{ experiment.get_test_dimension_display }}</div>
+                  {% endif %}
+                  {% if experiment.comment %}
+                    <div class="mailing-text small text-muted">{{ experiment.comment }}</div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% empty %}
+            <div class="mailing-empty text-muted small">Пусто</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
