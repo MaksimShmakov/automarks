@@ -14,12 +14,17 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from .forms import BranchForm
-from .mailing_split import MailingSplitError, assign_variant_for_recipient
+from .mailing_split import (
+    MailingSplitError,
+    assign_variant_for_recipient,
+    import_recipients,
+)
 from .models import (
     Bot,
     Branch,
     Experiment,
     MailingExperiment,
+    MailingRecipient,
     MailingVariant,
     Product,
     TaskRequest,
@@ -1247,3 +1252,95 @@ class MailingSplitAssignmentTests(TestCase):
         experiment = self._make_experiment([0, 0])
         with self.assertRaises(MailingSplitError):
             assign_variant_for_recipient(experiment, "user-1")
+
+
+class MailingRecipientImportTests(TestCase):
+    def setUp(self):
+        product = Product.objects.create(name="P-import")
+        bot = Bot.objects.create(name="bot-import", product=product)
+        self.experiment = MailingExperiment.objects.create(
+            title="Import test",
+            bot=bot,
+            status=MailingExperiment.Status.IN_PROGRESS,
+        )
+        for label, weight in [("A", 50), ("B", 50)]:
+            MailingVariant.objects.create(
+                experiment=self.experiment, label=label, weight=weight,
+            )
+
+    def test_basic_import_creates_recipients_with_assigned_variant(self):
+        ids = [f"user-{i}" for i in range(100)]
+        summary = import_recipients(self.experiment, ids)
+
+        self.assertEqual(summary["processed"], 100)
+        self.assertEqual(summary["created"], 100)
+        self.assertEqual(summary["updated"], 0)
+        self.assertEqual(summary["skipped"], 0)
+        self.assertEqual(sum(summary["variants"].values()), 100)
+
+        recipients = MailingRecipient.objects.filter(experiment=self.experiment)
+        self.assertEqual(recipients.count(), 100)
+        self.assertFalse(recipients.filter(assigned_variant__isnull=True).exists())
+
+    def test_reimport_is_idempotent(self):
+        ids = [f"user-{i}" for i in range(50)]
+        import_recipients(self.experiment, ids)
+
+        before = {
+            r.external_id: r.assigned_variant_id
+            for r in MailingRecipient.objects.filter(experiment=self.experiment)
+        }
+
+        summary = import_recipients(self.experiment, ids)
+
+        after_qs = MailingRecipient.objects.filter(experiment=self.experiment)
+        self.assertEqual(after_qs.count(), 50)
+        self.assertEqual(summary["processed"], 50)
+        self.assertEqual(summary["created"], 0)
+        self.assertEqual(summary["updated"], 50)
+        self.assertEqual(summary["skipped"], 0)
+
+        after = {r.external_id: r.assigned_variant_id for r in after_qs}
+        self.assertEqual(before, after)
+
+    def test_input_duplicates_are_deduped(self):
+        summary = import_recipients(
+            self.experiment, ["u1", "u2", "u1", "u2", "u3", "u1"]
+        )
+
+        self.assertEqual(summary["processed"], 3)
+        self.assertEqual(summary["created"], 3)
+        self.assertEqual(summary["updated"], 0)
+        self.assertEqual(summary["skipped"], 0)
+        self.assertEqual(
+            MailingRecipient.objects.filter(experiment=self.experiment).count(), 3,
+        )
+
+    def test_blank_and_none_ids_are_skipped(self):
+        summary = import_recipients(
+            self.experiment, ["u1", "", None, "   ", "u2"]
+        )
+
+        self.assertEqual(summary["processed"], 2)
+        self.assertEqual(summary["created"], 2)
+        self.assertEqual(summary["skipped"], 3)
+        stored_ids = set(
+            MailingRecipient.objects.filter(experiment=self.experiment).values_list(
+                "external_id", flat=True,
+            )
+        )
+        self.assertEqual(stored_ids, {"u1", "u2"})
+
+    def test_summary_counters_sum_to_processed_plus_skipped(self):
+        first = import_recipients(self.experiment, ["a", "b", "c", "", None])
+        self.assertEqual(first["created"] + first["updated"], first["processed"])
+        self.assertEqual(first["processed"] + first["skipped"], 5)
+
+        second = import_recipients(self.experiment, ["a", "b", "c", "d"])
+        self.assertEqual(second["created"] + second["updated"], second["processed"])
+        self.assertEqual(second["created"], 1)
+        self.assertEqual(second["updated"], 3)
+        self.assertEqual(second["skipped"], 0)
+        self.assertEqual(
+            sum(second["variants"].values()), second["processed"],
+        )
