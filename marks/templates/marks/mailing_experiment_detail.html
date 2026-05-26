@@ -139,12 +139,20 @@
               {% if variant.send_time %}{{ variant.send_time|date:"d.m.Y H:i" }}{% else %}<span class="mailing-variant-empty">не задано</span>{% endif %}
             </div>
           </div>
-          <div>
+          <div class="mb-2">
             <b class="small text-muted">Стартовый параметр ссылки</b>
             <div class="mt-1">
               {% if variant.start_param %}<code>{{ variant.start_param }}</code>{% else %}<span class="mailing-variant-empty">не задан</span>{% endif %}
             </div>
           </div>
+          {% if variant.recipient_count %}
+            <div>
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{% url 'mailing_export_cohort' pk=experiment.pk variant_pk=variant.pk %}">
+                Скачать список ({{ variant.recipient_count }})
+              </a>
+            </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -236,7 +244,13 @@
   <div class="card-body">
     {% if recipients_count %}
       <div class="mb-3">
-        <b>Распределение по когортам:</b>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <b>Распределение по когортам:</b>
+          <a class="btn btn-sm btn-outline-secondary"
+             href="{% url 'mailing_export_all_cohorts' pk=experiment.pk %}">
+            Скачать оба списка одним CSV
+          </a>
+        </div>
         <div class="d-flex flex-wrap gap-2 mt-2">
           {% for variant in variants %}
             <span class="badge bg-light text-dark border fs-6">

@@ -1,6 +1,10 @@
+import csv as csv_module
+import re
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -221,3 +225,58 @@ def mailing_import_recipients(request, pk):
 
     messages.success(request, _format_import_summary(summary))
     return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+
+def _safe_filename_token(value):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", (value or "").strip())
+    return cleaned.strip("._-") or "x"
+
+
+@login_required
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_export_cohort(request, pk, variant_pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    variant = get_object_or_404(
+        MailingVariant, pk=variant_pk, experiment=experiment,
+    )
+
+    external_ids = list(
+        variant.recipients.order_by("external_id").values_list("external_id", flat=True)
+    )
+    body = "\n".join(external_ids)
+    if body:
+        body += "\n"
+
+    response = HttpResponse(body, content_type="text/plain; charset=utf-8")
+    filename = (
+        f"experiment_{experiment.pk}_variant_{_safe_filename_token(variant.label)}.txt"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_export_all_cohorts(request, pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    recipients = (
+        experiment.recipients
+        .select_related("assigned_variant")
+        .order_by("assigned_variant__label", "external_id")
+    )
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    filename = f"experiment_{experiment.pk}_cohorts.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.write("﻿")
+
+    writer = csv_module.writer(response)
+    writer.writerow(["external_id", "variant_label", "start_param"])
+    for recipient in recipients:
+        variant = recipient.assigned_variant
+        writer.writerow([
+            recipient.external_id,
+            variant.label if variant else "",
+            variant.start_param if variant else "",
+        ])
+    return response
