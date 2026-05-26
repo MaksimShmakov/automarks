@@ -104,8 +104,9 @@
       <div class="card shadow-sm mailing-variant-card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
           <b>Вариант {{ variant.label }}</b>
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
             <span class="badge bg-info text-dark">вес {{ variant.weight }}</span>
+            <span class="badge bg-light text-dark border">получателей: {{ variant.recipient_count }}</span>
             <form method="post"
                   action="{% url 'mailing_variant_delete' pk=experiment.pk variant_pk=variant.pk %}"
                   onsubmit="return confirm('Удалить вариант {{ variant.label }}?');"
@@ -223,4 +224,64 @@
     У эксперимента уже 2 варианта. Чтобы добавить новый — удалите один из существующих.
   </div>
 {% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h4 class="mb-0">Получатели</h4>
+  {% if recipients_count %}
+    <span class="text-muted small">всего: {{ recipients_count }}</span>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    {% if recipients_count %}
+      <div class="mb-3">
+        <b>Распределение по когортам:</b>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          {% for variant in variants %}
+            <span class="badge bg-light text-dark border fs-6">
+              Вариант {{ variant.label }} — {{ variant.recipient_count }}
+            </span>
+          {% endfor %}
+          {% if unassigned_count %}
+            <span class="badge bg-warning text-dark fs-6">
+              Без назначения — {{ unassigned_count }}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="text-muted mb-3">Получатели не загружены.</div>
+    {% endif %}
+
+    {% if can_import %}
+      <form method="post"
+            action="{% url 'mailing_import_recipients' pk=experiment.pk %}"
+            enctype="multipart/form-data"
+            class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-12 col-md-8">
+          <label class="form-label">Файл со списком получателей</label>
+          <input type="file"
+                 name="recipients_file"
+                 accept=".txt,.csv,text/plain,text/csv"
+                 class="form-control"
+                 required>
+          <div class="form-text">
+            Поддерживаются .txt (по одному id на строку) и .csv (id в первой колонке, с заголовком или без).
+            Кодировка UTF-8 или CP1251. При повторной загрузке существующие получатели обновляются,
+            а веса вариантов будут перепроставлены по сплиту эксперимента.
+          </div>
+        </div>
+        <div class="col-12 col-md-4 d-grid">
+          <button type="submit" class="btn btn-primary">Загрузить и разбить на когорты</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="alert alert-secondary mb-0">
+        Загрузка получателей будет доступна после добавления обоих вариантов (A и B).
+      </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

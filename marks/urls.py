@@ -63,4 +63,5 @@ urlpatterns = [
     path("mailing-experiments/<int:pk>/", views_mailing.mailing_experiment_detail, name="mailing_experiment_detail"),
     path("mailing-experiments/<int:pk>/variants/add/", views_mailing.mailing_variant_add, name="mailing_variant_add"),
     path("mailing-experiments/<int:pk>/variants/<int:variant_pk>/delete/", views_mailing.mailing_variant_delete, name="mailing_variant_delete"),
+    path("mailing-experiments/<int:pk>/recipients/import/", views_mailing.mailing_import_recipients, name="mailing_import_recipients"),
 ]

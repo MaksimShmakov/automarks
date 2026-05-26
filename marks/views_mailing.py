@@ -1,11 +1,21 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .mailing_forms import MailingExperimentForm, MailingVariantForm
+from .mailing_split import (
+    MailingSplitError,
+    apply_split_weights,
+    import_recipients,
+    parse_recipient_ids,
+)
 from .models import MailingExperiment, MailingVariant, UserProfile
 from .permissions import require_roles
+
+
+REQUIRED_VARIANTS_FOR_IMPORT = 2
 
 
 MAILING_ACTIVE_COLUMNS = [
@@ -78,7 +88,14 @@ def mailing_experiment_create(request):
 
 
 def _render_experiment_detail(request, experiment, variant_form=None):
-    variants = experiment.variants.all().order_by("label", "id")
+    variants = (
+        experiment.variants.all()
+        .annotate(recipient_count=Count("recipients"))
+        .order_by("label", "id")
+    )
+    recipients_count = experiment.recipients.count()
+    assigned_total = sum(v.recipient_count for v in variants)
+    unassigned_count = max(recipients_count - assigned_total, 0)
     return render(
         request,
         "marks/mailing_experiment_detail.html",
@@ -86,6 +103,9 @@ def _render_experiment_detail(request, experiment, variant_form=None):
             "experiment": experiment,
             "variants": variants,
             "variant_form": variant_form or MailingVariantForm(experiment=experiment),
+            "recipients_count": recipients_count,
+            "unassigned_count": unassigned_count,
+            "can_import": variants.count() == REQUIRED_VARIANTS_FOR_IMPORT,
         },
     )
 
@@ -123,4 +143,81 @@ def mailing_variant_delete(request, pk, variant_pk):
     )
     variant.delete()
     messages.success(request, "Вариант удалён.")
+    return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+
+def _decode_recipients_file(uploaded_file):
+    raw = uploaded_file.read()
+    if not raw:
+        return ""
+    for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(
+        "Не удалось прочитать файл. Поддерживаются кодировки UTF-8 и CP1251.",
+    )
+
+
+def _format_import_summary(summary):
+    parts = []
+    for label in sorted(summary.get("variants", {}).keys()):
+        parts.append(f"вариант {label} — {summary['variants'][label]}")
+    if summary.get("updated"):
+        parts.append(f"обновлено {summary['updated']}")
+    if summary.get("skipped"):
+        parts.append(f"пропущено {summary['skipped']}")
+    base = f"Обработано {summary.get('processed', 0)}"
+    if parts:
+        return f"{base}: " + ", ".join(parts)
+    return base
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_import_recipients(request, pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+
+    uploaded = request.FILES.get("recipients_file")
+    if not uploaded:
+        messages.error(request, "Прикрепите файл со списком получателей.")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    if experiment.variants.count() != REQUIRED_VARIANTS_FOR_IMPORT:
+        messages.error(
+            request,
+            "Добавьте оба варианта (A и B) перед загрузкой получателей.",
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    try:
+        text = _decode_recipients_file(uploaded)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    try:
+        apply_split_weights(experiment)
+    except MailingSplitError as exc:
+        messages.error(request, f"Не удалось применить сплит трафика: {exc}")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    ids = parse_recipient_ids(text)
+    if not ids:
+        messages.error(
+            request,
+            "Не нашёл ни одного идентификатора в файле. "
+            "Проверьте формат: по одному id на строку или CSV с id в первой колонке.",
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    try:
+        summary = import_recipients(experiment, ids)
+    except MailingSplitError as exc:
+        messages.error(request, f"Не удалось распределить получателей: {exc}")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    messages.success(request, _format_import_summary(summary))
     return redirect("mailing_experiment_detail", pk=experiment.pk)
