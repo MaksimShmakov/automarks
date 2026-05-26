@@ -1,9 +1,10 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
-from .mailing_forms import MailingExperimentForm
-from .models import MailingExperiment, UserProfile
+from .mailing_forms import MailingExperimentForm, MailingVariantForm
+from .models import MailingExperiment, MailingVariant, UserProfile
 from .permissions import require_roles
 
 
@@ -74,3 +75,52 @@ def mailing_experiment_create(request):
         "marks/mailing_experiment_form.html",
         {"form": form},
     )
+
+
+def _render_experiment_detail(request, experiment, variant_form=None):
+    variants = experiment.variants.all().order_by("label", "id")
+    return render(
+        request,
+        "marks/mailing_experiment_detail.html",
+        {
+            "experiment": experiment,
+            "variants": variants,
+            "variant_form": variant_form or MailingVariantForm(experiment=experiment),
+        },
+    )
+
+
+@login_required
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_experiment_detail(request, pk):
+    experiment = get_object_or_404(
+        MailingExperiment.objects.select_related("bot", "created_by"), pk=pk,
+    )
+    return _render_experiment_detail(request, experiment)
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_variant_add(request, pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    form = MailingVariantForm(request.POST, experiment=experiment)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Вариант добавлен.")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+    messages.error(request, "Не удалось добавить вариант. Проверьте заполнение полей.")
+    return _render_experiment_detail(request, experiment, variant_form=form)
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_variant_delete(request, pk, variant_pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    variant = get_object_or_404(
+        MailingVariant, pk=variant_pk, experiment=experiment,
+    )
+    variant.delete()
+    messages.success(request, "Вариант удалён.")
+    return redirect("mailing_experiment_detail", pk=experiment.pk)

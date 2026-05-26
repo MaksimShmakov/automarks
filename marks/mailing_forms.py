@@ -1,6 +1,9 @@
 from django import forms
 
-from .models import Bot, MailingExperiment
+from .models import Bot, MailingExperiment, MailingVariant
+
+
+MAX_VARIANTS_PER_EXPERIMENT = 2
 
 
 class MailingExperimentForm(forms.ModelForm):
@@ -71,3 +74,71 @@ class MailingExperimentForm(forms.ModelForm):
             self.add_error("end_date", "Дата окончания не может быть раньше даты старта.")
 
         return cleaned
+
+
+class MailingVariantForm(forms.ModelForm):
+    class Meta:
+        model = MailingVariant
+        fields = ["label", "message_text", "offer_text", "send_time"]
+        labels = {
+            "label": "Метка варианта",
+            "message_text": "Текст сообщения",
+            "offer_text": "Оффер (опционально)",
+            "send_time": "Время отправки (опционально)",
+        }
+        widgets = {
+            "label": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "A", "maxlength": "20"},
+            ),
+            "message_text": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+            "offer_text": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "send_time": forms.DateTimeInput(
+                attrs={"class": "form-control", "type": "datetime-local"},
+                format="%Y-%m-%dT%H:%M",
+            ),
+        }
+
+    def __init__(self, *args, experiment=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.experiment = experiment
+        self.fields["label"].required = True
+        self.fields["message_text"].required = False
+        self.fields["offer_text"].required = False
+        self.fields["send_time"].required = False
+        self.fields["send_time"].input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"]
+
+    def clean_label(self):
+        label = (self.cleaned_data.get("label") or "").strip()
+        if not label:
+            raise forms.ValidationError("Укажите метку варианта (например, A).")
+        if self.experiment is None:
+            return label
+        qs = MailingVariant.objects.filter(experiment=self.experiment, label=label)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError(
+                f"Вариант с меткой '{label}' уже есть в этом эксперименте.",
+            )
+        return label
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.experiment is not None and not self.instance.pk:
+            existing = MailingVariant.objects.filter(experiment=self.experiment).count()
+            if existing >= MAX_VARIANTS_PER_EXPERIMENT:
+                raise forms.ValidationError(
+                    f"У эксперимента уже {MAX_VARIANTS_PER_EXPERIMENT} варианта. "
+                    "Удалите один из них, чтобы добавить новый.",
+                )
+        return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        if self.experiment is not None:
+            obj.experiment = self.experiment
+        if not obj.weight:
+            obj.weight = 1
+        if commit:
+            obj.save()
+        return obj

@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}{{ experiment.title|default:"АБ-тест рассылки" }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mailing-detail-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem 1.25rem;
+    font-size: 0.92rem;
+  }
+  .mailing-detail-meta b {
+    color: #495057;
+  }
+  .mailing-variant-card {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .mailing-variant-card .card-header {
+    background: #f8f9fa;
+  }
+  .mailing-variant-text {
+    white-space: pre-line;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  .mailing-variant-empty {
+    color: #adb5bd;
+    font-style: italic;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <a href="{% url 'mailing_experiments_board' %}" class="text-decoration-none small text-muted">← К списку</a>
+    <h2 class="mb-0">{{ experiment.title|default:"(без названия)" }}</h2>
+  </div>
+  <span class="badge bg-secondary fs-6">{{ experiment.get_status_display }}</span>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light"><b>Эксперимент</b></div>
+  <div class="card-body">
+    <div class="mailing-detail-meta">
+      <div>
+        <b>Бот:</b><br>
+        {% if experiment.bot %}{{ experiment.bot.title }} ({{ experiment.bot.get_platform_display }}){% else %}—{% endif %}
+      </div>
+      <div>
+        <b>Что тестируем:</b><br>
+        {{ experiment.get_test_dimension_display|default:"—" }}
+      </div>
+      <div>
+        <b>Сплит:</b><br>
+        {% if experiment.traffic_split == 'other' %}
+          {{ experiment.traffic_split_other|default:"—" }}
+        {% else %}
+          {{ experiment.get_traffic_split_display|default:"—" }}
+        {% endif %}
+      </div>
+      <div>
+        <b>Период:</b><br>
+        {{ experiment.start_date|default:"—" }} → {{ experiment.end_date|default:"—" }}
+      </div>
+      <div>
+        <b>Создал:</b><br>
+        {% if experiment.created_by %}{{ experiment.created_by.username }}{% else %}—{% endif %}
+      </div>
+      <div>
+        <b>Создан:</b><br>
+        {{ experiment.created_at|date:"d.m.Y H:i" }}
+      </div>
+    </div>
+
+    {% if experiment.hypothesis %}
+      <div class="mt-3">
+        <b>Гипотеза</b>
+        <div class="mailing-variant-text mt-1">{{ experiment.hypothesis }}</div>
+      </div>
+    {% endif %}
+
+    {% if experiment.comment %}
+      <div class="mt-3">
+        <b>Комментарий</b>
+        <div class="mailing-variant-text mt-1">{{ experiment.comment }}</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h4 class="mb-0">Варианты</h4>
+  <span class="text-muted small">{{ variants|length }} из 2</span>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for variant in variants %}
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm mailing-variant-card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <b>Вариант {{ variant.label }}</b>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-info text-dark">вес {{ variant.weight }}</span>
+            <form method="post"
+                  action="{% url 'mailing_variant_delete' pk=experiment.pk variant_pk=variant.pk %}"
+                  onsubmit="return confirm('Удалить вариант {{ variant.label }}?');"
+                  class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mb-2">
+            <b class="small text-muted">Текст сообщения</b>
+            {% if variant.message_text %}
+              <div class="mailing-variant-text mt-1">{{ variant.message_text }}</div>
+            {% else %}
+              <div class="mailing-variant-empty mt-1">не задан</div>
+            {% endif %}
+          </div>
+          <div class="mb-2">
+            <b class="small text-muted">Оффер</b>
+            {% if variant.offer_text %}
+              <div class="mailing-variant-text mt-1">{{ variant.offer_text }}</div>
+            {% else %}
+              <div class="mailing-variant-empty mt-1">не задан</div>
+            {% endif %}
+          </div>
+          <div>
+            <b class="small text-muted">Время отправки</b>
+            <div class="mt-1">
+              {% if variant.send_time %}{{ variant.send_time|date:"d.m.Y H:i" }}{% else %}<span class="mailing-variant-empty">не задано</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="alert alert-secondary mb-0">У эксперимента пока нет вариантов. Добавьте их ниже.</div>
+    </div>
+  {% endfor %}
+</div>
+
+{% if variants|length < 2 %}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-light"><b>Добавить вариант</b></div>
+    <div class="card-body">
+      <form method="post"
+            action="{% url 'mailing_variant_add' pk=experiment.pk %}"
+            class="row g-3">
+        {% csrf_token %}
+
+        {% if variant_form.non_field_errors %}
+          <div class="col-12">
+            {% for error in variant_form.non_field_errors %}
+              <div class="alert alert-danger mb-0">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">{{ variant_form.label.label }}</label>
+          {{ variant_form.label }}
+          {% for error in variant_form.label.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-12 col-md-9">
+          <label class="form-label">{{ variant_form.send_time.label }}</label>
+          {{ variant_form.send_time }}
+          {% for error in variant_form.send_time.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">{{ variant_form.message_text.label }}</label>
+          {{ variant_form.message_text }}
+          {% for error in variant_form.message_text.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">{{ variant_form.offer_text.label }}</label>
+          {{ variant_form.offer_text }}
+          {% for error in variant_form.offer_text.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary">Добавить вариант</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-info">
+    У эксперимента уже 2 варианта. Чтобы добавить новый — удалите один из существующих.
+  </div>
+{% endif %}
+{% endblock %}

@@ -60,4 +60,7 @@ urlpatterns = [
     path("telegram/webhook/<str:webhook_key>/", views.telegram_webhook, name="telegram_webhook"),
     path("mailing-experiments/", views_mailing.mailing_experiments_board, name="mailing_experiments_board"),
     path("mailing-experiments/create/", views_mailing.mailing_experiment_create, name="mailing_experiment_create"),
+    path("mailing-experiments/<int:pk>/", views_mailing.mailing_experiment_detail, name="mailing_experiment_detail"),
+    path("mailing-experiments/<int:pk>/variants/add/", views_mailing.mailing_variant_add, name="mailing_variant_add"),
+    path("mailing-experiments/<int:pk>/variants/<int:variant_pk>/delete/", views_mailing.mailing_variant_delete, name="mailing_variant_delete"),
 ]
