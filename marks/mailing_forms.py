@@ -79,12 +79,13 @@ class MailingExperimentForm(forms.ModelForm):
 class MailingVariantForm(forms.ModelForm):
     class Meta:
         model = MailingVariant
-        fields = ["label", "message_text", "offer_text", "send_time"]
+        fields = ["label", "message_text", "offer_text", "send_time", "start_param"]
         labels = {
             "label": "Метка варианта",
             "message_text": "Текст сообщения",
             "offer_text": "Оффер (опционально)",
             "send_time": "Время отправки (опционально)",
+            "start_param": "Стартовый параметр ссылки",
         }
         widgets = {
             "label": forms.TextInput(
@@ -96,6 +97,13 @@ class MailingVariantForm(forms.ModelForm):
                 attrs={"class": "form-control", "type": "datetime-local"},
                 format="%Y-%m-%dT%H:%M",
             ),
+            "start_param": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "например testA",
+                    "maxlength": "64",
+                },
+            ),
         }
 
     def __init__(self, *args, experiment=None, **kwargs):
@@ -105,6 +113,7 @@ class MailingVariantForm(forms.ModelForm):
         self.fields["message_text"].required = False
         self.fields["offer_text"].required = False
         self.fields["send_time"].required = False
+        self.fields["start_param"].required = False
         self.fields["send_time"].input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"]
 
     def clean_label(self):

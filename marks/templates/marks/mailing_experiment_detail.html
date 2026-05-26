@@ -132,10 +132,16 @@
               <div class="mailing-variant-empty mt-1">не задан</div>
             {% endif %}
           </div>
-          <div>
+          <div class="mb-2">
             <b class="small text-muted">Время отправки</b>
             <div class="mt-1">
               {% if variant.send_time %}{{ variant.send_time|date:"d.m.Y H:i" }}{% else %}<span class="mailing-variant-empty">не задано</span>{% endif %}
+            </div>
+          </div>
+          <div>
+            <b class="small text-muted">Стартовый параметр ссылки</b>
+            <div class="mt-1">
+              {% if variant.start_param %}<code>{{ variant.start_param }}</code>{% else %}<span class="mailing-variant-empty">не задан</span>{% endif %}
             </div>
           </div>
         </div>
@@ -193,6 +199,15 @@
           <label class="form-label">{{ variant_form.offer_text.label }}</label>
           {{ variant_form.offer_text }}
           {% for error in variant_form.offer_text.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-12 col-md-6">
+          <label class="form-label">{{ variant_form.start_param.label }}</label>
+          {{ variant_form.start_param }}
+          <div class="form-text">Подставится в ссылку на бота как ?start=&lt;значение&gt; — позволит различить когорту в продажах.</div>
+          {% for error in variant_form.start_param.errors %}
             <div class="invalid-feedback d-block">{{ error }}</div>
           {% endfor %}
         </div>

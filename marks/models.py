@@ -581,6 +581,7 @@ class MailingVariant(models.Model):
     message_text = models.TextField(blank=True, default="")
     offer_text = models.TextField(blank=True, null=True)
     send_time = models.DateTimeField(null=True, blank=True)
+    start_param = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
