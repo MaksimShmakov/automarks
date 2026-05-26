@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import Bot, MailingExperiment, MailingVariant
+from .models import Bot, MailingExperiment, MailingVariant, MailingVariantMetric
 
 
 MAX_VARIANTS_PER_EXPERIMENT = 2
@@ -151,3 +151,36 @@ class MailingVariantForm(forms.ModelForm):
         if commit:
             obj.save()
         return obj
+
+
+class MailingVariantMetricForm(forms.ModelForm):
+    METRIC_FIELDS = ("sent", "delivered", "clicks", "conversions")
+
+    class Meta:
+        model = MailingVariantMetric
+        fields = ["sent", "delivered", "clicks", "conversions"]
+        labels = {
+            "sent": "Отправлено",
+            "delivered": "Доставлено",
+            "clicks": "Клики",
+            "conversions": "Конверсии",
+        }
+        widgets = {
+            "sent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+            "delivered": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+            "clicks": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+            "conversions": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in self.METRIC_FIELDS:
+            self.fields[name].required = False
+            self.fields[name].min_value = 0
+
+    def clean(self):
+        cleaned = super().clean()
+        for name in self.METRIC_FIELDS:
+            if cleaned.get(name) in (None, ""):
+                cleaned[name] = 0
+        return cleaned

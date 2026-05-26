@@ -8,18 +8,48 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .mailing_forms import MailingExperimentForm, MailingVariantForm
+from .mailing_forms import (
+    MailingExperimentForm,
+    MailingVariantForm,
+    MailingVariantMetricForm,
+)
 from .mailing_split import (
     MailingSplitError,
     apply_split_weights,
     import_recipients,
     parse_recipient_ids,
 )
-from .models import MailingExperiment, MailingVariant, UserProfile
+from .models import (
+    MailingExperiment,
+    MailingVariant,
+    MailingVariantMetric,
+    UserProfile,
+)
 from .permissions import require_roles
 
 
 REQUIRED_VARIANTS_FOR_IMPORT = 2
+FINAL_MAILING_STATUSES = {
+    MailingExperiment.Status.SUCCESS,
+    MailingExperiment.Status.FAILED,
+}
+
+
+def _metric_form_prefix(variant):
+    return f"metric_{variant.pk}"
+
+
+def _attach_metric_view_data(variant):
+    metric = variant.metric if hasattr(variant, "metric") else None
+    variant.metric_obj = metric
+    sent = metric.sent if metric else 0
+    if sent:
+        variant.conversion_rate = (metric.conversions / sent) * 100
+        variant.has_conversion_rate = True
+    else:
+        variant.conversion_rate = 0
+        variant.has_conversion_rate = False
+    return variant
 
 
 MAILING_ACTIVE_COLUMNS = [
@@ -91,25 +121,40 @@ def mailing_experiment_create(request):
     )
 
 
-def _render_experiment_detail(request, experiment, variant_form=None):
-    variants = (
-        experiment.variants.all()
+def _render_experiment_detail(request, experiment, variant_form=None, metric_forms=None):
+    variants = list(
+        experiment.variants.select_related("metric")
         .annotate(recipient_count=Count("recipients"))
         .order_by("label", "id")
     )
+    for variant in variants:
+        _attach_metric_view_data(variant)
+
+    metric_forms = metric_forms or {}
+    variants_with_forms = []
+    for variant in variants:
+        form = metric_forms.get(variant.pk) or MailingVariantMetricForm(
+            instance=variant.metric_obj,
+            prefix=_metric_form_prefix(variant),
+        )
+        variants_with_forms.append({"variant": variant, "metric_form": form})
+
     recipients_count = experiment.recipients.count()
     assigned_total = sum(v.recipient_count for v in variants)
     unassigned_count = max(recipients_count - assigned_total, 0)
+
     return render(
         request,
         "marks/mailing_experiment_detail.html",
         {
             "experiment": experiment,
             "variants": variants,
+            "variants_with_forms": variants_with_forms,
             "variant_form": variant_form or MailingVariantForm(experiment=experiment),
             "recipients_count": recipients_count,
             "unassigned_count": unassigned_count,
-            "can_import": variants.count() == REQUIRED_VARIANTS_FOR_IMPORT,
+            "can_import": len(variants) == REQUIRED_VARIANTS_FOR_IMPORT,
+            "is_final": experiment.status in FINAL_MAILING_STATUSES,
         },
     )
 
@@ -280,3 +325,67 @@ def mailing_export_all_cohorts(request, pk):
             variant.start_param if variant else "",
         ])
     return response
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_variant_metric_edit(request, pk, variant_pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    variant = get_object_or_404(
+        MailingVariant, pk=variant_pk, experiment=experiment,
+    )
+    metric, _ = MailingVariantMetric.objects.get_or_create(variant=variant)
+    form = MailingVariantMetricForm(
+        request.POST, instance=metric, prefix=_metric_form_prefix(variant),
+    )
+    if form.is_valid():
+        form.save()
+        messages.success(request, f"Метрики варианта {variant.label} сохранены.")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    flat_errors = "; ".join(
+        f"{name}: {', '.join(errs)}" for name, errs in form.errors.items()
+    ) or "проверьте поля"
+    messages.error(
+        request,
+        f"Не удалось сохранить метрики варианта {variant.label}: {flat_errors}.",
+    )
+    return _render_experiment_detail(
+        request, experiment, metric_forms={variant.pk: form},
+    )
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_set_winner(request, pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    action = (request.POST.get("action") or "").strip()
+
+    if action == "fail":
+        experiment.winner_variant = None
+        experiment.status = MailingExperiment.Status.FAILED
+        experiment.save(update_fields=["winner_variant", "status", "updated_at"])
+        messages.success(request, "Эксперимент отмечен как провал.")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    if action == "success":
+        variant_pk_raw = (request.POST.get("variant_pk") or "").strip()
+        if not variant_pk_raw.isdigit():
+            messages.error(request, "Выберите вариант-победитель.")
+            return redirect("mailing_experiment_detail", pk=experiment.pk)
+        variant = get_object_or_404(
+            MailingVariant, pk=int(variant_pk_raw), experiment=experiment,
+        )
+        experiment.winner_variant = variant
+        experiment.status = MailingExperiment.Status.SUCCESS
+        experiment.save(update_fields=["winner_variant", "status", "updated_at"])
+        messages.success(
+            request,
+            f"Победитель зафиксирован: вариант {variant.label}.",
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    messages.error(request, "Неизвестное действие.")
+    return redirect("mailing_experiment_detail", pk=experiment.pk)

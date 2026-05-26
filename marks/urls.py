@@ -66,4 +66,6 @@ urlpatterns = [
     path("mailing-experiments/<int:pk>/recipients/import/", views_mailing.mailing_import_recipients, name="mailing_import_recipients"),
     path("mailing-experiments/<int:pk>/cohort/<int:variant_pk>/export/", views_mailing.mailing_export_cohort, name="mailing_export_cohort"),
     path("mailing-experiments/<int:pk>/cohorts/export/", views_mailing.mailing_export_all_cohorts, name="mailing_export_all_cohorts"),
+    path("mailing-experiments/<int:pk>/variants/<int:variant_pk>/metrics/", views_mailing.mailing_variant_metric_edit, name="mailing_variant_metric_edit"),
+    path("mailing-experiments/<int:pk>/winner/", views_mailing.mailing_set_winner, name="mailing_set_winner"),
 ]

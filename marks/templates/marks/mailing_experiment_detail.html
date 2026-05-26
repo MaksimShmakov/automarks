@@ -99,12 +99,16 @@
 </div>
 
 <div class="row g-3 mb-4">
-  {% for variant in variants %}
+  {% for entry in variants_with_forms %}
+    {% with variant=entry.variant metric_form=entry.metric_form %}
     <div class="col-12 col-lg-6">
       <div class="card shadow-sm mailing-variant-card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
           <b>Вариант {{ variant.label }}</b>
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if experiment.winner_variant_id == variant.pk %}
+              <span class="badge bg-success">Победитель</span>
+            {% endif %}
             <span class="badge bg-info text-dark">вес {{ variant.weight }}</span>
             <span class="badge bg-light text-dark border">получателей: {{ variant.recipient_count }}</span>
             <form method="post"
@@ -146,16 +150,87 @@
             </div>
           </div>
           {% if variant.recipient_count %}
-            <div>
+            <div class="mb-3">
               <a class="btn btn-sm btn-outline-primary"
                  href="{% url 'mailing_export_cohort' pk=experiment.pk variant_pk=variant.pk %}">
                 Скачать список ({{ variant.recipient_count }})
               </a>
             </div>
           {% endif %}
+
+          <hr class="my-2">
+
+          <div class="row g-2 small mb-2">
+            <div class="col-6 col-md-3">
+              <div class="text-muted">Отправлено</div>
+              <div class="fw-bold">{% if variant.metric_obj %}{{ variant.metric_obj.sent }}{% else %}0{% endif %}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-muted">Доставлено</div>
+              <div class="fw-bold">{% if variant.metric_obj %}{{ variant.metric_obj.delivered }}{% else %}0{% endif %}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-muted">Клики</div>
+              <div class="fw-bold">{% if variant.metric_obj %}{{ variant.metric_obj.clicks }}{% else %}0{% endif %}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-muted">Конверсии</div>
+              <div class="fw-bold">{% if variant.metric_obj %}{{ variant.metric_obj.conversions }}{% else %}0{% endif %}</div>
+            </div>
+          </div>
+
+          <div class="alert alert-secondary py-2 mb-2 small">
+            <b>Конверсия:</b>
+            {% if variant.has_conversion_rate %}
+              <span class="fs-6 fw-bold">{{ variant.conversion_rate|floatformat:2 }}%</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </div>
+
+          <form method="post"
+                action="{% url 'mailing_variant_metric_edit' pk=experiment.pk variant_pk=variant.pk %}"
+                class="row g-2">
+            {% csrf_token %}
+            <div class="col-6 col-md-3">
+              <label class="form-label small mb-1">{{ metric_form.sent.label }}</label>
+              {{ metric_form.sent }}
+              {% for error in metric_form.sent.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small mb-1">{{ metric_form.delivered.label }}</label>
+              {{ metric_form.delivered }}
+              {% for error in metric_form.delivered.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small mb-1">{{ metric_form.clicks.label }}</label>
+              {{ metric_form.clicks }}
+              {% for error in metric_form.clicks.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small mb-1">{{ metric_form.conversions.label }}</label>
+              {{ metric_form.conversions }}
+              {% for error in metric_form.conversions.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-sm btn-outline-success">Сохранить метрики</button>
+              {% if variant.metric_obj %}
+                <span class="text-muted small ms-2">обновлено: {{ variant.metric_obj.updated_at|date:"d.m.Y H:i" }}</span>
+              {% endif %}
+            </div>
+          </form>
         </div>
       </div>
     </div>
+    {% endwith %}
   {% empty %}
     <div class="col-12">
       <div class="alert alert-secondary mb-0">У эксперимента пока нет вариантов. Добавьте их ниже.</div>
@@ -232,6 +307,66 @@
     У эксперимента уже 2 варианта. Чтобы добавить новый — удалите один из существующих.
   </div>
 {% endif %}
+
+<h4 class="mb-2">Итог теста</h4>
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    {% if is_final %}
+      {% if experiment.winner_variant %}
+        <div class="alert alert-success mb-0">
+          <b>Победитель:</b> Вариант {{ experiment.winner_variant.label }}.
+          Статус — {{ experiment.get_status_display }}.
+        </div>
+      {% else %}
+        <div class="alert alert-danger mb-0">
+          Тест без результата. Статус — {{ experiment.get_status_display }}.
+        </div>
+      {% endif %}
+    {% else %}
+      {% if variants %}
+        <form method="post"
+              action="{% url 'mailing_set_winner' pk=experiment.pk %}"
+              class="row g-2 align-items-end mb-3">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="success">
+          <div class="col-12">
+            <label class="form-label mb-1"><b>Выберите вариант-победитель:</b></label>
+            <div class="d-flex flex-wrap gap-3">
+              {% for variant in variants %}
+                <div class="form-check">
+                  <input class="form-check-input"
+                         type="radio"
+                         name="variant_pk"
+                         id="winner_{{ variant.pk }}"
+                         value="{{ variant.pk }}"
+                         required>
+                  <label class="form-check-label" for="winner_{{ variant.pk }}">
+                    Вариант {{ variant.label }}
+                    {% if variant.has_conversion_rate %}
+                      <span class="text-muted small">(CR {{ variant.conversion_rate|floatformat:2 }}%)</span>
+                    {% endif %}
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-success">Зафиксировать победителя (успех)</button>
+          </div>
+        </form>
+        <hr>
+      {% endif %}
+      <form method="post"
+            action="{% url 'mailing_set_winner' pk=experiment.pk %}"
+            onsubmit="return confirm('Отметить эксперимент как провал, без победителя?');"
+            class="mb-0">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="fail">
+        <button type="submit" class="btn btn-outline-danger">Тест без результата (провал)</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h4 class="mb-0">Получатели</h4>
