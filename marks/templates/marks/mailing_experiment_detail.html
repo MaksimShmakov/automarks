@@ -43,6 +43,29 @@
   <span class="badge bg-secondary fs-6">{{ experiment.get_status_display }}</span>
 </div>
 
+{% if not is_final %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="text-muted small me-2">Стадия:</span>
+        {% for code, label in working_status_choices %}
+          {% if experiment.status == code %}
+            <span class="badge bg-primary fs-6">{{ label }}</span>
+          {% else %}
+            <form method="post"
+                  action="{% url 'mailing_set_status' pk=experiment.pk %}"
+                  class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="status" value="{{ code }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">{{ label }}</button>
+            </form>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-light"><b>Эксперимент</b></div>
   <div class="card-body">

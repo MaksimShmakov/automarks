@@ -33,6 +33,17 @@ FINAL_MAILING_STATUSES = {
     MailingExperiment.Status.SUCCESS,
     MailingExperiment.Status.FAILED,
 }
+WORKING_MAILING_STATUSES = (
+    MailingExperiment.Status.BACKLOG,
+    MailingExperiment.Status.DRAFT,
+    MailingExperiment.Status.IN_PROGRESS,
+    MailingExperiment.Status.COMPLETED,
+)
+WORKING_STATUS_CHOICES = [
+    (code, label)
+    for code, label in MailingExperiment.Status.choices
+    if code in {s.value for s in WORKING_MAILING_STATUSES}
+]
 
 
 def _metric_form_prefix(variant):
@@ -155,6 +166,7 @@ def _render_experiment_detail(request, experiment, variant_form=None, metric_for
             "unassigned_count": unassigned_count,
             "can_import": len(variants) == REQUIRED_VARIANTS_FOR_IMPORT,
             "is_final": experiment.status in FINAL_MAILING_STATUSES,
+            "working_status_choices": WORKING_STATUS_CHOICES,
         },
     )
 
@@ -388,4 +400,38 @@ def mailing_set_winner(request, pk):
         return redirect("mailing_experiment_detail", pk=experiment.pk)
 
     messages.error(request, "Неизвестное действие.")
+    return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+
+@login_required
+@require_POST
+@require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
+def mailing_set_status(request, pk):
+    experiment = get_object_or_404(MailingExperiment, pk=pk)
+    new_status = (request.POST.get("status") or "").strip()
+
+    allowed = {code for code, _ in WORKING_STATUS_CHOICES}
+    if new_status not in allowed:
+        messages.error(
+            request,
+            "Недопустимый рабочий статус. Финальный исход выставляется отдельно через «Итог теста».",
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    if experiment.status in FINAL_MAILING_STATUSES:
+        messages.error(
+            request,
+            "Эксперимент уже в финальном статусе. Смена рабочей стадии недоступна.",
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    if experiment.status == new_status:
+        messages.info(request, "Стадия не изменилась.")
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    experiment.status = new_status
+    experiment.save(update_fields=["status", "updated_at"])
+
+    label = dict(MailingExperiment.Status.choices).get(new_status, new_status)
+    messages.success(request, f"Стадия эксперимента: {label}.")
     return redirect("mailing_experiment_detail", pk=experiment.pk)
