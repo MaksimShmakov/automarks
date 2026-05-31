@@ -1189,9 +1189,9 @@ class MailingSplitAssignmentTests(TestCase):
         bot = Bot.objects.create(name=f"bot-{Bot.objects.count() + 1}", product=product)
         experiment = MailingExperiment.objects.create(
             title="Test split",
-            bot=bot,
             status=MailingExperiment.Status.IN_PROGRESS,
         )
+        experiment.bots.add(bot)
         labels = ["A", "B", "C", "D"]
         for label, weight in zip(labels, weights):
             MailingVariant.objects.create(
@@ -1246,7 +1246,8 @@ class MailingSplitAssignmentTests(TestCase):
     def test_empty_variants_raises(self):
         product = Product.objects.create(name="P-empty")
         bot = Bot.objects.create(name="bot-empty", product=product)
-        experiment = MailingExperiment.objects.create(title="No variants", bot=bot)
+        experiment = MailingExperiment.objects.create(title="No variants")
+        experiment.bots.add(bot)
         with self.assertRaises(MailingSplitError):
             assign_variant_for_recipient(experiment, "user-1")
 
@@ -1262,9 +1263,9 @@ class MailingRecipientImportTests(TestCase):
         bot = Bot.objects.create(name="bot-import", product=product)
         self.experiment = MailingExperiment.objects.create(
             title="Import test",
-            bot=bot,
             status=MailingExperiment.Status.IN_PROGRESS,
         )
+        self.experiment.bots.add(bot)
         for label, weight in [("A", 50), ("B", 50)]:
             MailingVariant.objects.create(
                 experiment=self.experiment, label=label, weight=weight,
@@ -1354,10 +1355,10 @@ class ApplySplitWeightsTests(TestCase):
         bot = Bot.objects.create(name=f"bot-split-{Bot.objects.count() + 1}", product=product)
         experiment = MailingExperiment.objects.create(
             title="Split test",
-            bot=bot,
             traffic_split=traffic_split,
             traffic_split_other=traffic_split_other,
         )
+        experiment.bots.add(bot)
         for label in labels:
             MailingVariant.objects.create(
                 experiment=experiment, label=label, weight=1,
@@ -1461,7 +1462,8 @@ class RecipientFileParseTests(TestCase):
     def test_parse_then_import_pipeline(self):
         product = Product.objects.create(name="P-parse")
         bot = Bot.objects.create(name="bot-parse", product=product)
-        experiment = MailingExperiment.objects.create(title="Parse pipeline", bot=bot)
+        experiment = MailingExperiment.objects.create(title="Parse pipeline")
+        experiment.bots.add(bot)
         for label, weight in [("A", 50), ("B", 50)]:
             MailingVariant.objects.create(
                 experiment=experiment, label=label, weight=weight,

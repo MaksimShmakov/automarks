@@ -24,9 +24,10 @@
       </div>
 
       <div class="col-12 col-xl-4">
-        <label class="form-label">{{ form.bot.label }}</label>
-        {{ form.bot }}
-        {% for error in form.bot.errors %}
+        <label class="form-label">{{ form.bots.label }}</label>
+        {{ form.bots }}
+        <div class="form-text">Удерживайте Ctrl/⌘, чтобы выбрать несколько.</div>
+        {% for error in form.bots.errors %}
           <div class="invalid-feedback d-block">{{ error }}</div>
         {% endfor %}
       </div>
@@ -35,6 +36,14 @@
         <label class="form-label">{{ form.hypothesis.label }}</label>
         {{ form.hypothesis }}
         {% for error in form.hypothesis.errors %}
+          <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">{{ form.tz_url.label }}</label>
+        {{ form.tz_url }}
+        {% for error in form.tz_url.errors %}
           <div class="invalid-feedback d-block">{{ error }}</div>
         {% endfor %}
       </div>

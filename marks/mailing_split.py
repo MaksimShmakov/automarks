@@ -34,7 +34,7 @@ def assign_variant_for_recipient(experiment, external_id):
     return variants[-1]
 
 
-def import_recipients(experiment, external_ids):
+def import_recipients(experiment, external_ids, assign_variants=True):
     from .models import MailingRecipient
 
     seen = set()
@@ -68,7 +68,10 @@ def import_recipients(experiment, external_ids):
 
     with transaction.atomic():
         for external_id in cleaned:
-            variant = assign_variant_for_recipient(experiment, external_id)
+            if assign_variants:
+                variant = assign_variant_for_recipient(experiment, external_id)
+            else:
+                variant = None
             _, created = MailingRecipient.objects.update_or_create(
                 experiment=experiment,
                 external_id=external_id,
@@ -78,8 +81,42 @@ def import_recipients(experiment, external_ids):
                 summary["created"] += 1
             else:
                 summary["updated"] += 1
-            variant_counts[variant.label] += 1
+            if variant is not None:
+                variant_counts[variant.label] += 1
 
+    summary["variants"] = dict(variant_counts)
+    return summary
+
+
+def assign_pending_recipients(experiment):
+    from .models import MailingRecipient
+
+    pending = list(
+        MailingRecipient.objects
+        .filter(experiment=experiment, assigned_variant__isnull=True)
+        .order_by("external_id")
+    )
+
+    summary = {
+        "processed": 0,
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "variants": {},
+    }
+    if not pending:
+        return summary
+
+    variant_counts = Counter()
+    with transaction.atomic():
+        for recipient in pending:
+            variant = assign_variant_for_recipient(experiment, recipient.external_id)
+            recipient.assigned_variant = variant
+            recipient.save(update_fields=["assigned_variant"])
+            variant_counts[variant.label] += 1
+            summary["updated"] += 1
+
+    summary["processed"] = len(pending)
     summary["variants"] = dict(variant_counts)
     return summary
 

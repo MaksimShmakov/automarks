@@ -96,9 +96,14 @@ class ExperimentAdmin(admin.ModelAdmin):
 
 @admin.register(MailingExperiment)
 class MailingExperimentAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "bot", "test_dimension", "traffic_split", "status", "start_date", "end_date", "created_at")
+    list_display = ("id", "title", "bots_display", "test_dimension", "traffic_split", "status", "start_date", "end_date", "created_at")
     list_filter = ("status", "test_dimension", "traffic_split")
-    search_fields = ("title", "hypothesis", "comment")
+    search_fields = ("title", "hypothesis", "comment", "bots__name", "bots__display_name")
+    filter_horizontal = ("bots",)
+
+    def bots_display(self, obj):
+        return ", ".join(bot.title for bot in obj.bots.all())
+    bots_display.short_description = "Bots"
 
 
 @admin.register(MailingVariant)

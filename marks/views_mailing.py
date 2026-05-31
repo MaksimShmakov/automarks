@@ -16,6 +16,7 @@ from .mailing_forms import (
 from .mailing_split import (
     MailingSplitError,
     apply_split_weights,
+    assign_pending_recipients,
     import_recipients,
     parse_recipient_ids,
 )
@@ -95,7 +96,7 @@ def _build_mailing_columns(experiments):
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def mailing_experiments_board(request):
     experiments = (
-        MailingExperiment.objects.select_related("bot", "created_by")
+        MailingExperiment.objects.select_related("created_by").prefetch_related("bots")
         .all()
     )
     active_columns, library_columns = _build_mailing_columns(experiments)
@@ -175,7 +176,7 @@ def _render_experiment_detail(request, experiment, variant_form=None, metric_for
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def mailing_experiment_detail(request, pk):
     experiment = get_object_or_404(
-        MailingExperiment.objects.select_related("bot", "created_by"), pk=pk,
+        MailingExperiment.objects.select_related("created_by").prefetch_related("bots"), pk=pk,
     )
     return _render_experiment_detail(request, experiment)
 
@@ -189,6 +190,25 @@ def mailing_variant_add(request, pk):
     if form.is_valid():
         form.save()
         messages.success(request, "Вариант добавлен.")
+
+        variants_now = experiment.variants.count()
+        pending_exists = experiment.recipients.filter(
+            assigned_variant__isnull=True,
+        ).exists()
+        if variants_now == REQUIRED_VARIANTS_FOR_IMPORT and pending_exists:
+            try:
+                apply_split_weights(experiment)
+                summary = assign_pending_recipients(experiment)
+                messages.success(
+                    request,
+                    "Загруженные ранее получатели распределены: "
+                    + _format_import_summary(summary),
+                )
+            except MailingSplitError as exc:
+                messages.warning(
+                    request,
+                    f"Не удалось распределить ранее загруженных получателей: {exc}",
+                )
         return redirect("mailing_experiment_detail", pk=experiment.pk)
     messages.error(request, "Не удалось добавить вариант. Проверьте заполнение полей.")
     return _render_experiment_detail(request, experiment, variant_form=form)
@@ -246,23 +266,10 @@ def mailing_import_recipients(request, pk):
         messages.error(request, "Прикрепите файл со списком получателей.")
         return redirect("mailing_experiment_detail", pk=experiment.pk)
 
-    if experiment.variants.count() != REQUIRED_VARIANTS_FOR_IMPORT:
-        messages.error(
-            request,
-            "Добавьте оба варианта (A и B) перед загрузкой получателей.",
-        )
-        return redirect("mailing_experiment_detail", pk=experiment.pk)
-
     try:
         text = _decode_recipients_file(uploaded)
     except ValueError as exc:
         messages.error(request, str(exc))
-        return redirect("mailing_experiment_detail", pk=experiment.pk)
-
-    try:
-        apply_split_weights(experiment)
-    except MailingSplitError as exc:
-        messages.error(request, f"Не удалось применить сплит трафика: {exc}")
         return redirect("mailing_experiment_detail", pk=experiment.pk)
 
     ids = parse_recipient_ids(text)
@@ -272,6 +279,25 @@ def mailing_import_recipients(request, pk):
             "Не нашёл ни одного идентификатора в файле. "
             "Проверьте формат: по одному id на строку или CSV с id в первой колонке.",
         )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    variants_count = experiment.variants.count()
+
+    if variants_count < REQUIRED_VARIANTS_FOR_IMPORT:
+        # Reset any partial assignments to keep state consistent.
+        experiment.recipients.update(assigned_variant=None)
+        summary = import_recipients(experiment, ids, assign_variants=False)
+        messages.success(
+            request,
+            "Получатели загружены, ждут добавления вариантов. "
+            + _format_import_summary(summary),
+        )
+        return redirect("mailing_experiment_detail", pk=experiment.pk)
+
+    try:
+        apply_split_weights(experiment)
+    except MailingSplitError as exc:
+        messages.error(request, f"Не удалось применить сплит трафика: {exc}")
         return redirect("mailing_experiment_detail", pk=experiment.pk)
 
     try:

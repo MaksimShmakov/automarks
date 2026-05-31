@@ -84,9 +84,14 @@
                   </a>
                 </h5>
                 <div class="mailing-meta mb-2">
-                  {% if experiment.bot %}
-                    <div><b>Бот:</b> {{ experiment.bot.title }}</div>
-                  {% endif %}
+                  {% with bots=experiment.bots.all %}
+                    {% if bots %}
+                      <div>
+                        <b>Боты:</b>
+                        {% for b in bots %}{{ b.title }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
                   {% if experiment.test_dimension %}
                     <div><b>Тестируем:</b> {{ experiment.get_test_dimension_display }}</div>
                   {% endif %}
@@ -141,9 +146,14 @@
                   </a>
                 </h5>
                 <div class="mailing-meta">
-                  {% if experiment.bot %}
-                    <div><b>Бот:</b> {{ experiment.bot.title }}</div>
-                  {% endif %}
+                  {% with bots=experiment.bots.all %}
+                    {% if bots %}
+                      <div>
+                        <b>Боты:</b>
+                        {% for b in bots %}{{ b.title }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
                   {% if experiment.test_dimension %}
                     <div><b>Тестируем:</b> {{ experiment.get_test_dimension_display }}</div>
                   {% endif %}

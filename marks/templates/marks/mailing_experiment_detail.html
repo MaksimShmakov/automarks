@@ -71,12 +71,24 @@
   <div class="card-body">
     <div class="mailing-detail-meta">
       <div>
-        <b>Бот:</b><br>
-        {% if experiment.bot %}{{ experiment.bot.title }} ({{ experiment.bot.get_platform_display }}){% else %}—{% endif %}
+        <b>Боты:</b><br>
+        {% with bots=experiment.bots.all %}
+          {% if bots %}
+            {% for b in bots %}{{ b.title }} ({{ b.get_platform_display }}){% if not forloop.last %}, {% endif %}{% endfor %}
+          {% else %}—{% endif %}
+        {% endwith %}
       </div>
       <div>
         <b>Что тестируем:</b><br>
         {{ experiment.get_test_dimension_display|default:"—" }}
+      </div>
+      <div>
+        <b>ТЗ:</b><br>
+        {% if experiment.tz_url %}
+          <a href="{{ experiment.tz_url }}" target="_blank" rel="noopener" class="text-break">{{ experiment.tz_url }}</a>
+        {% else %}
+          <span class="mailing-variant-empty">не задана</span>
+        {% endif %}
       </div>
       <div>
         <b>Сплит:</b><br>
@@ -426,34 +438,35 @@
       <div class="text-muted mb-3">Получатели не загружены.</div>
     {% endif %}
 
-    {% if can_import %}
-      <form method="post"
-            action="{% url 'mailing_import_recipients' pk=experiment.pk %}"
-            enctype="multipart/form-data"
-            class="row g-3 align-items-end">
-        {% csrf_token %}
-        <div class="col-12 col-md-8">
-          <label class="form-label">Файл со списком получателей</label>
-          <input type="file"
-                 name="recipients_file"
-                 accept=".txt,.csv,text/plain,text/csv"
-                 class="form-control"
-                 required>
-          <div class="form-text">
-            Поддерживаются .txt (по одному id на строку) и .csv (id в первой колонке, с заголовком или без).
-            Кодировка UTF-8 или CP1251. При повторной загрузке существующие получатели обновляются,
-            а веса вариантов будут перепроставлены по сплиту эксперимента.
-          </div>
+    <form method="post"
+          action="{% url 'mailing_import_recipients' pk=experiment.pk %}"
+          enctype="multipart/form-data"
+          class="row g-3 align-items-end">
+      {% csrf_token %}
+      <div class="col-12 col-md-8">
+        <label class="form-label">Файл со списком получателей</label>
+        <input type="file"
+               name="recipients_file"
+               accept=".txt,.csv,text/plain,text/csv"
+               class="form-control"
+               required>
+        <div class="form-text">
+          Поддерживаются .txt (по одному id на строку) и .csv (id в первой колонке, с заголовком или без).
+          Кодировка UTF-8 или CP1251.
+          {% if can_import %}
+            При повторной загрузке существующие получатели обновляются,
+            а веса вариантов перепроставляются по сплиту эксперимента.
+          {% else %}
+            Получатели загрузятся без когорт — они автоматически распределятся, как только в эксперименте окажется 2 варианта.
+          {% endif %}
         </div>
-        <div class="col-12 col-md-4 d-grid">
-          <button type="submit" class="btn btn-primary">Загрузить и разбить на когорты</button>
-        </div>
-      </form>
-    {% else %}
-      <div class="alert alert-secondary mb-0">
-        Загрузка получателей будет доступна после добавления обоих вариантов (A и B).
       </div>
-    {% endif %}
+      <div class="col-12 col-md-4 d-grid">
+        <button type="submit" class="btn btn-primary">
+          {% if can_import %}Загрузить и разбить на когорты{% else %}Загрузить получателей{% endif %}
+        </button>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}

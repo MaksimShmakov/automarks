@@ -517,10 +517,9 @@ class MailingExperiment(models.Model):
 
     title = models.CharField(max_length=255, blank=True, default="")
     hypothesis = models.TextField(blank=True, default="")
-    bot = models.ForeignKey(
+    tz_url = models.URLField(blank=True, default="")
+    bots = models.ManyToManyField(
         Bot,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="mailing_experiments",
     )

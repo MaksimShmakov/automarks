@@ -12,7 +12,8 @@ class MailingExperimentForm(forms.ModelForm):
         fields = [
             "title",
             "hypothesis",
-            "bot",
+            "tz_url",
+            "bots",
             "test_dimension",
             "traffic_split",
             "traffic_split_other",
@@ -23,7 +24,8 @@ class MailingExperimentForm(forms.ModelForm):
         labels = {
             "title": "Название эксперимента",
             "hypothesis": "Гипотеза",
-            "bot": "Бот",
+            "tz_url": "Ссылка на ТЗ",
+            "bots": "Боты",
             "test_dimension": "Что тестируем",
             "traffic_split": "Сплит трафика",
             "traffic_split_other": "Свой сплит",
@@ -34,7 +36,10 @@ class MailingExperimentForm(forms.ModelForm):
         widgets = {
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "hypothesis": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "bot": forms.Select(attrs={"class": "form-select"}),
+            "tz_url": forms.URLInput(
+                attrs={"class": "form-control", "placeholder": "https://..."},
+            ),
+            "bots": forms.SelectMultiple(attrs={"class": "form-select", "size": "6"}),
             "test_dimension": forms.Select(attrs={"class": "form-select"}),
             "traffic_split": forms.Select(attrs={"class": "form-select"}),
             "traffic_split_other": forms.TextInput(
@@ -47,13 +52,14 @@ class MailingExperimentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["bot"].required = False
-        self.fields["bot"].queryset = Bot.objects.all().order_by(
+        self.fields["bots"].required = False
+        self.fields["bots"].queryset = Bot.objects.all().order_by(
             "platform", "display_name", "name",
         )
-        self.fields["bot"].label_from_instance = (
+        self.fields["bots"].label_from_instance = (
             lambda obj: f"{obj.title} ({obj.get_platform_display()})"
         )
+        self.fields["tz_url"].required = False
 
     def clean(self):
         cleaned = super().clean()
