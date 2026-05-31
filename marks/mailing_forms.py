@@ -39,7 +39,7 @@ class MailingExperimentForm(forms.ModelForm):
             "tz_url": forms.URLInput(
                 attrs={"class": "form-control", "placeholder": "https://..."},
             ),
-            "bots": forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
+            "bots": forms.CheckboxSelectMultiple(),
             "test_dimension": forms.Select(attrs={"class": "form-select"}),
             "traffic_split": forms.Select(attrs={"class": "form-select"}),
             "traffic_split_other": forms.TextInput(

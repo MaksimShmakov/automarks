@@ -4,25 +4,38 @@
 
 {% block extra_head %}
 <style>
-  #bots-list ul {
-    list-style: none;
-    padding-left: 0;
+  /* Django CheckboxSelectMultiple renders:
+       <div id="id_bots">                  ← outer wrapper
+         <div>                              ← per-option row
+           <label><input type="checkbox" ...> Text</label>
+         </div>
+       </div>
+     Reset its margins and align checkbox+label inline. */
+  #bots-list > div {
     margin: 0;
+    padding: 0;
   }
-  #bots-list li {
-    padding: 0.15rem 0;
+  #bots-list > div > div {
+    padding: 0.2rem 0;
+    margin: 0;
+    line-height: 1.3;
   }
   #bots-list label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
     margin: 0;
     cursor: pointer;
-    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   #bots-list input[type="checkbox"] {
     flex: 0 0 auto;
     margin: 0;
+    width: 1rem;
+    height: 1rem;
+    vertical-align: middle;
   }
 </style>
 {% endblock %}
