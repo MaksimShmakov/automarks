@@ -25,8 +25,15 @@
 
       <div class="col-12 col-xl-4">
         <label class="form-label">{{ form.bots.label }}</label>
-        {{ form.bots }}
-        <div class="form-text">Удерживайте Ctrl/⌘, чтобы выбрать несколько.</div>
+        <input type="text"
+               id="bots-search"
+               class="form-control form-control-sm mb-2"
+               placeholder="Поиск бота..."
+               autocomplete="off">
+        <div id="bots-list" class="border rounded p-2" style="max-height: 180px; overflow-y: auto;">
+          {{ form.bots }}
+        </div>
+        <div class="form-text">Отметьте нужных ботов. Доступен поиск.</div>
         {% for error in form.bots.errors %}
           <div class="invalid-feedback d-block">{{ error }}</div>
         {% endfor %}
@@ -111,4 +118,22 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  const search = document.getElementById('bots-search');
+  const list = document.getElementById('bots-list');
+  if (!search || !list) return;
+  search.addEventListener('input', function() {
+    const q = this.value.trim().toLowerCase();
+    list.querySelectorAll('label, div').forEach(function(item) {
+      if (!item.querySelector('input[type=checkbox]')) return;
+      const text = item.textContent.toLowerCase();
+      item.style.display = text.includes(q) ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}
