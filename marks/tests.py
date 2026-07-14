@@ -625,7 +625,7 @@ class BotPlatformTests(TaskBoardBaseTestCase):
     def test_default_telegram_tag_uses_start_link(self):
         tag = self.branch_main.tags.get(url__isnull=False)
 
-        self.assertEqual(tag.url, "https://t.me/test_bot_name?start=MN0001")
+        self.assertEqual(tag.url, "https://telegram.me/test_bot_name?start=MN0001")
 
     def test_vk_tag_uses_group_ref_link(self):
         vk_bot = Bot.objects.create(

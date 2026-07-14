@@ -11,6 +11,9 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 
+TELEGRAM_LINK_DOMAIN = "https://telegram.me"
+
+
 def task_request_photo_upload_to(instance, filename):
     extension = Path(filename or "").suffix.lower() or ".bin"
     return f"task_request_photos/{timezone.now():%Y/%m/%d}/{uuid4().hex}{extension}"
@@ -79,7 +82,7 @@ class Bot(models.Model):
             if ref_source not in {None, ""}:
                 params["ref_source"] = str(ref_source)
             return f"https://vk.com/write-{identifier}?{urlencode(params)}"
-        return f"https://t.me/{identifier}?start={tag_number}"
+        return f"{TELEGRAM_LINK_DOMAIN}/{identifier}?start={tag_number}"
 
 
 class PlanMonthly(models.Model):
