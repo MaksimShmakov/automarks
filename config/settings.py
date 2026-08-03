@@ -159,6 +159,19 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 
+# Базовый домен коротких ссылок сокращателя. Дефолт — наш прод-домен.
+# Если позже понадобится брендовый (напр. https://l.el-ed.ru) — меняется только эта переменная.
+SHORTLINK_BASE_DOMAIN = os.getenv("SHORTLINK_BASE_DOMAIN", "https://automarks.tw1.ru")
+
+
+# Авто-sync справочника UTM: CSV-экспорт вкладок Google Sheet (medium/source/campaign).
+UTM_DICTIONARY_CSV_URLS = {
+    "medium": os.getenv("UTM_DICTIONARY_MEDIUM_CSV_URL", ""),
+    "source": os.getenv("UTM_DICTIONARY_SOURCE_CSV_URL", ""),
+    "campaign": os.getenv("UTM_DICTIONARY_CAMPAIGN_CSV_URL", ""),
+}
+
+
 TELEGRAM_NOTIFY_BOT_TOKEN = os.getenv("TELEGRAM_NOTIFY_BOT_TOKEN", "")
 TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
 TELEGRAM_NOTIFY_STATUS_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_STATUS_CHAT_ID", "")

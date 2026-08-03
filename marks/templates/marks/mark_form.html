@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Генератор меток{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Генератор UTM-метки</h3>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'marks_registry' %}">Реестр →</a>
+    </div>
+
+    {% if not has_dictionary %}
+      <div class="alert alert-warning">
+        Справочник пуст. Загрузите значения командой
+        <code>python manage.py import_utm_dictionary</code> — иначе списки будут пустыми.
+      </div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0">
+      <div class="card-body p-4">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.original_url.label }}</label>
+            {{ form.original_url }}
+            {% for error in form.original_url.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{{ form.source.label }}</label>
+              {{ form.source }}
+              {% for error in form.source.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{{ form.medium.label }}</label>
+              {{ form.medium }}
+              {% for error in form.medium.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.source_custom.label }}</label>
+            {{ form.source_custom }}
+            <div class="form-text">Заполняй только если выбрал шаблонный source (<code>tg-&lt;имя&gt;</code>, <code>&lt;partner&gt;</code> и т.п.) — такая метка уйдёт «на заявку Грише».</div>
+            {% for error in form.source_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <label class="form-label">{{ form.mark_type.label }}</label>
+              {{ form.mark_type }}
+              {% for error in form.mark_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="form-label">{{ form.direction.label }}</label>
+              {{ form.direction }}
+              {% for error in form.direction.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="form-label">{{ form.funnel.label }}</label>
+              {{ form.funnel }}
+              {% for error in form.funnel.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.name.label }}</label>
+            {{ form.name }}
+            <div class="form-text">campaign соберётся как <code>тип_направление_воронка_имя</code>. Внутри имени — дефис, не подчёркивание.</div>
+            {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{{ form.utm_term.label }}</label>
+              {{ form.utm_term }}
+              {% for error in form.utm_term.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{{ form.utm_content.label }}</label>
+              {{ form.utm_content }}
+              {% for error in form.utm_content.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          </div>
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+
+          <div class="d-flex gap-2 mt-2">
+            <button type="submit" name="make_full" class="btn btn-primary">Полная ссылка</button>
+            <button type="submit" name="make_short" class="btn btn-success">Короткая ссылка</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

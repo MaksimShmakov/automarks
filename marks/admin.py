@@ -11,6 +11,9 @@ from .models import (
     UserProfile,
     TaskRequest,
     Experiment,
+    ShortLink,
+    UtmDictionaryEntry,
+    MarkedLink,
 )
 
 
@@ -88,3 +91,24 @@ class ExperimentAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "status", "start_date", "end_date", "wants_ab_test", "created_by", "created_at", "updated_at")
     list_filter = ("status", "wants_ab_test", "traffic_volume", "test_duration")
     search_fields = ("title", "metric_impact", "expected_change", "hypothesis", "comment", "result_variant_a", "result_variant_b")
+
+
+@admin.register(ShortLink)
+class ShortLinkAdmin(admin.ModelAdmin):
+    list_display = ("code", "target_url", "clicks", "last_click_at", "created_by", "created_at")
+    search_fields = ("code", "target_url")
+    readonly_fields = ("clicks", "last_click_at", "created_at")
+
+
+@admin.register(UtmDictionaryEntry)
+class UtmDictionaryEntryAdmin(admin.ModelAdmin):
+    list_display = ("field", "value", "label", "group", "is_template", "is_active", "synced_at")
+    list_filter = ("field", "is_active", "is_template")
+    search_fields = ("value", "label", "group")
+
+
+@admin.register(MarkedLink)
+class MarkedLinkAdmin(admin.ModelAdmin):
+    list_display = ("utm_campaign", "utm_source", "utm_medium", "author", "pending_review", "created_at")
+    list_filter = ("utm_source", "direction", "pending_review")
+    search_fields = ("utm_campaign", "original_url", "full_url", "author__username")

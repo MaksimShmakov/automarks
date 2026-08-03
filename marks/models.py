@@ -1,4 +1,5 @@
 import re
+import secrets
 from pathlib import Path
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -474,6 +475,115 @@ class Tag(models.Model):
 def create_first_tag(sender, instance, created, **kwargs):
     if created and not instance.tags.exists():
         Tag.objects.create(branch=instance)
+
+
+class ShortLink(models.Model):
+    """Короткая ссылка сокращателя: короткий код → 302 на target_url со счётчиком кликов."""
+
+    code = models.CharField(max_length=20, unique=True, db_index=True, blank=True)
+    target_url = models.CharField(max_length=2000)
+    clicks = models.PositiveIntegerField(default=0)
+    last_click_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="short_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @staticmethod
+    def generate_unique_code():
+        for _ in range(10):
+            code = secrets.token_urlsafe(6)
+            if not ShortLink.objects.filter(code=code).exists():
+                return code
+        return uuid4().hex[:12]
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self.generate_unique_code()
+        super().save(*args, **kwargs)
+
+    @property
+    def short_url(self):
+        base = (getattr(settings, "SHORTLINK_BASE_DOMAIN", "") or "").rstrip("/")
+        path = f"/s/{self.code}/"
+        return f"{base}{path}" if base else path
+
+    def __str__(self):
+        return f"{self.code} → {(self.target_url or '')[:50]}"
+
+
+class UtmDictionaryEntry(models.Model):
+    """Справочное значение метки (из Google Sheet «Справочник UTM», вкладки 02/03/04)."""
+
+    class Field(models.TextChoices):
+        SOURCE = "source", "source"
+        MEDIUM = "medium", "medium"
+        TYPE = "type", "тип"
+        DIRECTION = "direction", "направление"
+        FUNNEL = "funnel", "воронка"
+
+    field = models.CharField(max_length=20, choices=Field.choices)
+    value = models.CharField(max_length=255)
+    label = models.CharField(max_length=500, blank=True, default="")
+    group = models.CharField(max_length=255, blank=True, default="")
+    is_template = models.BooleanField(default=False, help_text="Шаблон-маска (напр. tg-<имя>), а не прямой выбор")
+    is_active = models.BooleanField(default=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("field", "value")
+        ordering = ["field", "value"]
+
+    def __str__(self):
+        return f"{self.field}:{self.value}"
+
+
+class MarkedLink(models.Model):
+    """Запись реестра: целевой URL + собранная UTM-метка + автор + (опц.) короткая ссылка."""
+
+    original_url = models.CharField(max_length=2000)
+    utm_source = models.CharField(max_length=255)
+    utm_medium = models.CharField(max_length=255)
+    utm_campaign = models.CharField(max_length=255)
+    utm_term = models.CharField(max_length=255, blank=True, default="")
+    utm_content = models.CharField(max_length=255, blank=True, default="")
+
+    # Компоненты кампании (для фильтров и пересборки): campaign = mark_type_direction_funnel_name
+    mark_type = models.CharField(max_length=50)
+    direction = models.CharField(max_length=50)
+    funnel = models.CharField(max_length=50)
+    name = models.CharField(max_length=255)
+
+    full_url = models.CharField(max_length=2500)
+    short_link = models.ForeignKey(
+        ShortLink,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="marked_links",
+    )
+    pending_review = models.BooleanField(default=False, help_text="Шаблонный source — на заявку Грише")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="marked_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.utm_campaign} → {(self.original_url or '')[:40]}"
 
 
 class UserProfile(models.Model):

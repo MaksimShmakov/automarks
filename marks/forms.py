@@ -2,6 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from pathlib import Path
+from urllib.parse import urlparse
 import re
 
 from .models import (
@@ -16,6 +17,7 @@ from .models import (
     Tag,
     TaskRequest,
     TrafficReport,
+    UtmDictionaryEntry,
 )
 from .task_time import TASK_INPUT_FORMATS, parse_task_input_datetime
 
@@ -597,4 +599,136 @@ class LegacyExperimentForm(forms.ModelForm):
         elif duration == Experiment.TestDuration.END_DATE and not cleaned.get("duration_end_date"):
             self.add_error("duration_end_date", "Укажите дату окончания.")
 
+        return cleaned
+
+
+class MarkForm(forms.Form):
+    """Генератор UTM-метки: закрытые поля — из справочника, ручные — по маске."""
+
+    NAME_RE = re.compile(r"^[a-z0-9-]+$")
+    CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
+
+    original_url = forms.CharField(
+        label="Ссылка (лендинг / канал / бот / ролик)",
+        max_length=2000,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "https://el-ed.ru/oge"}),
+    )
+    source = forms.ChoiceField(label="source", choices=[])
+    source_custom = forms.CharField(
+        label="имя для шаблонного source",
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "python2026 (для tg-<имя> и т.п.)"}),
+    )
+    medium = forms.ChoiceField(label="medium", choices=[])
+    mark_type = forms.ChoiceField(label="тип", choices=[])
+    direction = forms.ChoiceField(label="направление", choices=[])
+    funnel = forms.ChoiceField(label="воронка", choices=[])
+    name = forms.CharField(
+        label="имя кампании",
+        max_length=255,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "pyweek2026"}),
+    )
+    utm_term = forms.CharField(
+        label="term (аудитория/ключ + таргетолог)",
+        max_length=255,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "retarget-konkurenty-vld"}),
+    )
+    utm_content = forms.CharField(
+        label="content (ID объявления)",
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "{ad_id}"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Шаблоны source (tg-<имя> и т.п.) теперь доступны: выбираешь шаблон + вписываешь имя.
+        self.fields["source"].choices = self._dict_choices("source", include_templates=True)
+        self.fields["medium"].choices = self._dict_choices("medium")
+        self.fields["mark_type"].choices = self._dict_choices("type")
+        self.fields["direction"].choices = self._dict_choices("direction")
+        self.fields["funnel"].choices = self._dict_choices("funnel")
+        for field_name in ("source", "medium", "mark_type", "direction", "funnel"):
+            self.fields[field_name].widget.attrs["class"] = "form-select"
+
+    @staticmethod
+    def _dict_choices(field, include_templates=True):
+        queryset = UtmDictionaryEntry.objects.filter(field=field, is_active=True)
+        if not include_templates:
+            queryset = queryset.filter(is_template=False)
+        options = []
+        for entry in queryset:
+            suffix = " (шаблон)" if entry.is_template else (f" — {entry.label}" if entry.label else "")
+            options.append((entry.value, f"{entry.value}{suffix}"))
+        return [("", "— выбери —")] + options
+
+    @staticmethod
+    def resolve_template_source(template, custom):
+        """tg-<имя> + 'python2026' → 'tg-python2026'; <partner> + 'vc' → 'vc'."""
+        prefix = template.split("<", 1)[0]
+        custom = custom.strip()
+        if prefix and not custom.startswith(prefix):
+            return f"{prefix}{custom}"
+        return custom
+
+    def clean_original_url(self):
+        value = (self.cleaned_data.get("original_url") or "").strip()
+        if " " in value or self.CYRILLIC_RE.search(value):
+            raise forms.ValidationError("URL без пробелов и кириллицы.")
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError:
+            raise forms.ValidationError("URL только из ASCII-символов.")
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise forms.ValidationError("Нужен полный http(s) URL, например https://el-ed.ru/oge.")
+        return value
+
+    def clean_name(self):
+        value = (self.cleaned_data.get("name") or "").strip()
+        if not self.NAME_RE.match(value):
+            raise forms.ValidationError(
+                "Только латиница, цифры и дефис; без пробелов и подчёркивания."
+            )
+        return value
+
+    def _clean_manual_value(self, key):
+        value = (self.cleaned_data.get(key) or "").strip()
+        if " " in value:
+            raise forms.ValidationError("Без пробелов.")
+        if self.CYRILLIC_RE.search(value):
+            raise forms.ValidationError("Без кириллицы.")
+        return value
+
+    def clean_utm_term(self):
+        return self._clean_manual_value("utm_term")
+
+    def clean_utm_content(self):
+        return self._clean_manual_value("utm_content")
+
+    def clean(self):
+        cleaned = super().clean()
+        source = cleaned.get("source")
+        if not source:
+            return cleaned
+
+        entry = UtmDictionaryEntry.objects.filter(
+            field="source", value=source, is_active=True
+        ).first()
+
+        if entry and entry.is_template:
+            custom = (cleaned.get("source_custom") or "").strip()
+            if not custom:
+                self.add_error("source_custom", "Заполни имя для шаблонного source.")
+            else:
+                resolved = self.resolve_template_source(source, custom)
+                if not self.NAME_RE.match(resolved):
+                    self.add_error("source_custom", "Только латиница, цифры и дефис.")
+                else:
+                    cleaned["resolved_source"] = resolved
+                    cleaned["pending_review"] = True
+        else:
+            cleaned["resolved_source"] = source
+            cleaned["pending_review"] = False
         return cleaned

@@ -1,17 +1,19 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, User
+from django.utils.dateparse import parse_date
 from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
 from django.http import JsonResponse, HttpResponse
 from django.conf import settings
 from django.contrib.auth import login
 from django.urls import reverse
 from datetime import datetime, timedelta, time
 from django.db import transaction
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -29,7 +31,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 
-from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest, Experiment
+from .models import Bot, Branch, Tag, Product, PlanMonthly, Funnel, TrafficReport, PatchNote, UserProfile, TaskRequest, Experiment, ShortLink, UtmDictionaryEntry, MarkedLink
 from .forms import (
     BotForm,
     VKBotForm,
@@ -43,8 +45,10 @@ from .forms import (
     MailingTaskRequestForm,
     BuildTaskRequestForm,
     TaskStatusForm,
+    MarkForm,
 )
 from .experiment_forms import ExperimentCompletionForm, ExperimentForm
+from .services.link_builder import build_campaign, build_full_url
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import (
     notify_new_task,
@@ -2004,3 +2008,186 @@ def update_experiment_status(request, experiment_id):
                 + (notify_error or "Проверьте Telegram-настройки."),
             )
     return redirect("experiments_board")
+
+
+@never_cache
+def short_link_redirect(request, code):
+    """Публичный редирект сокращателя: /s/<code>/ → 302 на target_url, +1 клик."""
+    link = get_object_or_404(ShortLink, code=code)
+    ShortLink.objects.filter(pk=link.pk).update(
+        clicks=F("clicks") + 1,
+        last_click_at=timezone.now(),
+    )
+    return redirect(link.target_url)
+
+
+def _filter_marked_links(request):
+    """Применяет к реестру фильтры из GET (автор/source/campaign/направление/даты)."""
+    links = MarkedLink.objects.select_related("author", "short_link").all()
+
+    author_id = (request.GET.get("author") or "").strip()
+    source = (request.GET.get("source") or "").strip()
+    campaign = (request.GET.get("campaign") or "").strip()
+    direction = (request.GET.get("direction") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    if author_id.isdigit():
+        links = links.filter(author_id=int(author_id))
+    if source:
+        links = links.filter(utm_source=source)
+    if campaign:
+        links = links.filter(utm_campaign__icontains=campaign)
+    if direction:
+        links = links.filter(direction=direction)
+
+    parsed_from = parse_date(date_from) if date_from else None
+    if parsed_from:
+        links = links.filter(created_at__date__gte=parsed_from)
+    parsed_to = parse_date(date_to) if date_to else None
+    if parsed_to:
+        links = links.filter(created_at__date__lte=parsed_to)
+
+    applied = {
+        "author": author_id,
+        "source": source,
+        "campaign": campaign,
+        "direction": direction,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+    return links, applied
+
+
+def _export_marks_excel(links):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Реестр меток"
+    headers = [
+        "campaign", "source", "medium", "term", "content",
+        "Ссылка (URL)", "Полная ссылка", "Короткая", "Клики", "Автор", "Дата",
+    ]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    for link in links:
+        short = link.short_link
+        ws.append([
+            link.utm_campaign,
+            link.utm_source,
+            link.utm_medium,
+            link.utm_term,
+            link.utm_content,
+            link.original_url,
+            link.full_url,
+            short.short_url if short else "",
+            short.clicks if short else "",
+            link.author.username if link.author else "",
+            timezone.localtime(link.created_at).strftime("%d.%m.%Y %H:%M"),
+        ])
+
+    for column_cells in ws.columns:
+        max_len = max(len(str(c.value or "")) for c in column_cells)
+        ws.column_dimensions[column_cells[0].column_letter].width = min(max_len + 2, 60)
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="marks_registry.xlsx"'
+    wb.save(response)
+    return response
+
+
+@login_required
+@require_roles("admin", "manager", "marketer")
+def marks_registry(request):
+    """Реестр меток: фильтры, живые клики (счётчик сокращателя), экспорт в Excel."""
+    links, applied = _filter_marked_links(request)
+
+    if request.GET.get("export") == "excel":
+        return _export_marks_excel(links)
+
+    context = {
+        "links": links,
+        "filters": applied,
+        "authors": User.objects.filter(marked_links__isnull=False).distinct().order_by("username"),
+        "sources": sorted(
+            v for v in MarkedLink.objects.order_by().values_list("utm_source", flat=True).distinct() if v
+        ),
+        "directions": UtmDictionaryEntry.objects.filter(field="direction", is_active=True),
+    }
+    return render(request, "marks/mark_registry.html", context)
+
+
+@login_required
+@require_roles("admin", "manager", "marketer")
+def marks_new(request):
+    """Генератор метки: собирает UTM из справочника, создаёт запись реестра и (опц.) короткую ссылку."""
+    if request.method == "POST":
+        form = MarkForm(request.POST)
+        if form.is_valid():
+            data = form.cleaned_data
+            source = data.get("resolved_source", data["source"])
+            pending_review = data.get("pending_review", False)
+            campaign = build_campaign(data["mark_type"], data["direction"], data["funnel"], data["name"])
+            utm = {
+                "utm_source": source,
+                "utm_medium": data["medium"],
+                "utm_campaign": campaign,
+                "utm_term": data["utm_term"],
+                "utm_content": data["utm_content"],
+            }
+            full_url = build_full_url(data["original_url"], utm)
+            wants_short = "make_short" in request.POST
+
+            # Дедуп: тот же URL + полный набор UTM → возвращаем существующую, дубль не плодим.
+            existing = MarkedLink.objects.filter(
+                original_url=data["original_url"],
+                utm_source=source,
+                utm_medium=data["medium"],
+                utm_campaign=campaign,
+                utm_term=data["utm_term"],
+                utm_content=data["utm_content"],
+            ).first()
+
+            if existing is not None:
+                mark = existing
+                if wants_short and mark.short_link is None:
+                    mark.short_link = ShortLink.objects.create(target_url=mark.full_url, created_by=request.user)
+                    mark.save(update_fields=["short_link"])
+                messages.info(request, "Такая метка уже есть — показываю существующую, дубль не создаю.")
+            else:
+                short_link = None
+                if wants_short:
+                    short_link = ShortLink.objects.create(target_url=full_url, created_by=request.user)
+                mark = MarkedLink.objects.create(
+                    original_url=data["original_url"],
+                    utm_source=source,
+                    utm_medium=data["medium"],
+                    utm_campaign=campaign,
+                    utm_term=data["utm_term"],
+                    utm_content=data["utm_content"],
+                    mark_type=data["mark_type"],
+                    direction=data["direction"],
+                    funnel=data["funnel"],
+                    name=data["name"],
+                    full_url=full_url,
+                    short_link=short_link,
+                    pending_review=pending_review,
+                    author=request.user,
+                )
+                messages.success(request, "Метка создана и добавлена в реестр.")
+                if pending_review:
+                    messages.warning(request, "Шаблонный source — метка помечена «на заявку Грише».")
+
+            messages.info(request, f"Полная ссылка: {mark.full_url}")
+            if mark.short_link is not None:
+                messages.info(request, f"Короткая ссылка: {mark.short_link.short_url}")
+            return redirect("marks_registry")
+    else:
+        form = MarkForm()
+
+    has_dictionary = UtmDictionaryEntry.objects.filter(is_active=True).exists()
+    return render(request, "marks/mark_form.html", {"form": form, "has_dictionary": has_dictionary})
