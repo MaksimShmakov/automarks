@@ -1359,7 +1359,7 @@ class MarkGeneratorTests(TestCase):
             "funnel": "bot",
             "name": "pyweek2026",
             "utm_term": "interests",
-            "utm_content": "{ad_id}",
+            "utm_content": "ad-456",
             "make_full": "1",
         }
         payload.update({k: v for k, v in overrides.items() if v is not None})
@@ -1384,7 +1384,7 @@ class MarkGeneratorTests(TestCase):
         self.assertEqual(mark.utm_campaign, "acq_oge_bot_pyweek2026")
         self.assertEqual(mark.author, self.marketer)
         self.assertIsNone(mark.short_link)
-        self.assertIn("utm_content={ad_id}", mark.full_url)
+        self.assertIn("utm_content=ad-456", mark.full_url)
 
     def test_create_short_link(self):
         self.client.force_login(self.marketer)
@@ -1521,13 +1521,24 @@ class MarkEnforcementTests(TestCase):
             "funnel": "bot",
             "name": "pyweek2026",
             "utm_term": "interests",
-            "utm_content": "{ad_id}",
+            "utm_content": "ad-456",
         }
         data.update(overrides)
         return data
 
     def test_valid_form(self):
         self.assertTrue(MarkForm(self._data()).is_valid())
+
+    def test_content_placeholder_rejected_strict_mask(self):
+        # Строгая маска по ТЗ: {ad_id} с фигурными скобками не проходит.
+        form = MarkForm(self._data(utm_content="{ad_id}"))
+        self.assertFalse(form.is_valid())
+        self.assertIn("utm_content", form.errors)
+
+    def test_dashed_funnel_resolves(self):
+        form = MarkForm(self._data(funnel_custom="python2026"))
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["resolved_funnel"], "bot-python2026")
 
     def test_cyrillic_url_rejected(self):
         form = MarkForm(self._data(original_url="https://el-ed.ru/огэ"))
@@ -1587,7 +1598,7 @@ class MarkDedupTests(TestCase):
             "funnel": "bot",
             "name": "pyweek2026",
             "utm_term": "interests",
-            "utm_content": "{ad_id}",
+            "utm_content": "ad-456",
             "make_full": "1",
         }
         payload.update({k: v for k, v in overrides.items() if v is not None})

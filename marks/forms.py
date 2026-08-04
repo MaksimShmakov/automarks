@@ -624,6 +624,12 @@ class MarkForm(forms.Form):
     mark_type = forms.ChoiceField(label="тип", choices=[])
     direction = forms.ChoiceField(label="направление", choices=[])
     funnel = forms.ChoiceField(label="воронка", choices=[])
+    funnel_custom = forms.CharField(
+        label="конкретный канал/бот в воронке (через дефис)",
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "python2026 → tgk-python2026"}),
+    )
     name = forms.CharField(
         label="имя кампании",
         max_length=255,
@@ -638,7 +644,7 @@ class MarkForm(forms.Form):
         label="content (ID объявления)",
         max_length=255,
         required=False,
-        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "{ad_id}"}),
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "ad-456"}),
     )
 
     def __init__(self, *args, **kwargs):
@@ -695,10 +701,12 @@ class MarkForm(forms.Form):
 
     def _clean_manual_value(self, key):
         value = (self.cleaned_data.get(key) or "").strip()
-        if " " in value:
-            raise forms.ValidationError("Без пробелов.")
-        if self.CYRILLIC_RE.search(value):
-            raise forms.ValidationError("Без кириллицы.")
+        if not value:
+            return value  # пустое допустимо (обязательность проверяет сама форма)
+        if not self.NAME_RE.match(value):
+            raise forms.ValidationError(
+                "Только латиница, цифры и дефис; без пробелов и подчёркивания."
+            )
         return value
 
     def clean_utm_term(self):
@@ -709,26 +717,38 @@ class MarkForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+
+        # source: шаблон → собрать по маске + флаг «на заявку Грише».
         source = cleaned.get("source")
-        if not source:
-            return cleaned
-
-        entry = UtmDictionaryEntry.objects.filter(
-            field="source", value=source, is_active=True
-        ).first()
-
-        if entry and entry.is_template:
-            custom = (cleaned.get("source_custom") or "").strip()
-            if not custom:
-                self.add_error("source_custom", "Заполни имя для шаблонного source.")
-            else:
-                resolved = self.resolve_template_source(source, custom)
-                if not self.NAME_RE.match(resolved):
-                    self.add_error("source_custom", "Только латиница, цифры и дефис.")
+        if source:
+            entry = UtmDictionaryEntry.objects.filter(
+                field="source", value=source, is_active=True
+            ).first()
+            if entry and entry.is_template:
+                custom = (cleaned.get("source_custom") or "").strip()
+                if not custom:
+                    self.add_error("source_custom", "Заполни имя для шаблонного source.")
                 else:
-                    cleaned["resolved_source"] = resolved
-                    cleaned["pending_review"] = True
-        else:
-            cleaned["resolved_source"] = source
-            cleaned["pending_review"] = False
+                    resolved = self.resolve_template_source(source, custom)
+                    if not self.NAME_RE.match(resolved):
+                        self.add_error("source_custom", "Только латиница, цифры и дефис.")
+                    else:
+                        cleaned["resolved_source"] = resolved
+                        cleaned["pending_review"] = True
+            else:
+                cleaned["resolved_source"] = source
+                cleaned["pending_review"] = False
+
+        # воронка: конкретный канал/бот через дефис (tgk-python2026, bot-efir).
+        funnel = cleaned.get("funnel")
+        if funnel:
+            funnel_custom = (cleaned.get("funnel_custom") or "").strip()
+            if funnel_custom:
+                if not self.NAME_RE.match(funnel_custom):
+                    self.add_error("funnel_custom", "Только латиница, цифры и дефис.")
+                else:
+                    cleaned["resolved_funnel"] = f"{funnel}-{funnel_custom}"
+            else:
+                cleaned["resolved_funnel"] = funnel
+
         return cleaned

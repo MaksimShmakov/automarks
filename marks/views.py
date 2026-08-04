@@ -2130,8 +2130,9 @@ def marks_new(request):
         if form.is_valid():
             data = form.cleaned_data
             source = data.get("resolved_source", data["source"])
+            funnel = data.get("resolved_funnel", data["funnel"])
             pending_review = data.get("pending_review", False)
-            campaign = build_campaign(data["mark_type"], data["direction"], data["funnel"], data["name"])
+            campaign = build_campaign(data["mark_type"], data["direction"], funnel, data["name"])
             utm = {
                 "utm_source": source,
                 "utm_medium": data["medium"],
@@ -2171,7 +2172,7 @@ def marks_new(request):
                     utm_content=data["utm_content"],
                     mark_type=data["mark_type"],
                     direction=data["direction"],
-                    funnel=data["funnel"],
+                    funnel=funnel,
                     name=data["name"],
                     full_url=full_url,
                     short_link=short_link,

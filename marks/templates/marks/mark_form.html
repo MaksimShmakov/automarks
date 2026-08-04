@@ -67,6 +67,13 @@
           </div>
 
           <div class="mb-3">
+            <label class="form-label">{{ form.funnel_custom.label }}</label>
+            {{ form.funnel_custom }}
+            <div class="form-text">Не обязательно. Если реклама ведёт в конкретный канал/бот — впиши имя, воронка станет <code>воронка-имя</code> (напр. <code>tgk-python2026</code>, <code>bot-efir</code>).</div>
+            {% for error in form.funnel_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+
+          <div class="mb-3">
             <label class="form-label">{{ form.name.label }}</label>
             {{ form.name }}
             <div class="form-text">campaign соберётся как <code>тип_направление_воронка_имя</code>. Внутри имени — дефис, не подчёркивание.</div>
