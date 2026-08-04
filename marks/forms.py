@@ -752,3 +752,22 @@ class MarkForm(forms.Form):
                 cleaned["resolved_funnel"] = funnel
 
         return cleaned
+
+
+class TagMarkForm(MarkForm):
+    """Принудительный генератор UTM для метки бота (Tag): как MarkForm, но без целевого URL.
+
+    URL метки — это deep-link бота (t.me/бот?start=номер), он генерится в Tag.save().
+    Поэтому поле original_url убираем; добавляем budget.
+    """
+
+    budget = forms.DecimalField(
+        label="бюджет",
+        required=False,
+        min_value=0,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop("original_url", None)

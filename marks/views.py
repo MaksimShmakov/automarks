@@ -46,9 +46,11 @@ from .forms import (
     BuildTaskRequestForm,
     TaskStatusForm,
     MarkForm,
+    TagMarkForm,
 )
 from .experiment_forms import ExperimentCompletionForm, ExperimentForm
-from .services.link_builder import build_campaign, build_full_url
+from .services.link_builder import build_campaign, build_full_url, validate_tag_utm_row
+from .services.utm_dictionary import load_dictionary_sets
 from .permissions import require_roles, BOT_OPERATORS_GROUP
 from .services.telegram import (
     notify_new_task,
@@ -725,10 +727,22 @@ def tags_list(request, branch_id):
 
     if request.method == "POST" and "create_tag" in request.POST:
         if get_user_role(request.user) != 'analyst':
-            form = TagForm(request.POST)
+            form = TagMarkForm(request.POST)
             if form.is_valid():
-                tag = form.save(commit=False)
-                tag.branch = branch
+                data = form.cleaned_data
+                source = data.get("resolved_source", data["source"])
+                funnel = data.get("resolved_funnel", data["funnel"])
+                campaign = build_campaign(data["mark_type"], data["direction"], funnel, data["name"])
+                tag = Tag(
+                    branch=branch,
+                    utm_source=source,
+                    utm_medium=data["medium"],
+                    utm_campaign=campaign,
+                    utm_term=data["utm_term"],
+                    utm_content=data["utm_content"],
+                    budget=data.get("budget"),
+                    pending_review=data.get("pending_review", False),
+                )
                 tag.save()
                 _set_last_tag_action(
                     request,
@@ -736,10 +750,12 @@ def tags_list(request, branch_id):
                     branch.id,
                     {"tag_ids": [tag.id]},
                 )
-                messages.success(request, "Метка создана")
+                if tag.pending_review:
+                    messages.warning(request, "Шаблонный source — метка помечена «на заявку Грише».")
+                messages.success(request, f"Метка {tag.number} создана")
                 return redirect("tags_list", branch_id=branch.id)
     else:
-        form = TagForm()
+        form = TagMarkForm()
 
 
     import_form = TagImportForm()
@@ -858,20 +874,38 @@ def import_tags_csv(request, branch_id):
         return redirect("tags_list", branch_id=branch.id)
 
 
+    # Собираем непустые строки и валидируем их против справочника (принуждение по ТЗ).
+    try:
+        rows = [row for row in reader if any((row.get(col) or "").strip() for col in expected)]
+    except csv.Error as exc:
+        messages.error(request, f"Ошибка CSV: {exc}")
+        return redirect("tags_list", branch_id=branch.id)
+
+    dictionary_sets = load_dictionary_sets()
+    row_errors = []
+    for index, row in enumerate(rows, start=1):
+        errors = validate_tag_utm_row(row, dictionary_sets)
+        if errors:
+            row_errors.append(f"строка {index}: " + "; ".join(errors))
+
+    if row_errors:
+        messages.error(
+            request,
+            "Импорт отклонён — метки не по справочнику. "
+            + " | ".join(row_errors[:10])
+            + (f" … и ещё {len(row_errors) - 10}" if len(row_errors) > 10 else ""),
+        )
+        return redirect("tags_list", branch_id=branch.id)
+
     created = 0
     created_ids = []
     try:
         with transaction.atomic():
-            for row in reader:
-                if not any((row.get(col) or "").strip() for col in expected):
-                    continue
+            for row in rows:
                 tag_kwargs = {col: (row.get(col) or "").strip() or None for col in expected}
                 new_tag = Tag.objects.create(branch=branch, **tag_kwargs)
                 created += 1
                 created_ids.append(new_tag.id)
-    except csv.Error as exc:
-        messages.error(request, f"Ошибка CSV: {exc}")
-        return redirect("tags_list", branch_id=branch.id)
     except Exception as exc:
         messages.error(request, f"Ошибка при импорте: {exc}")
         return redirect("tags_list", branch_id=branch.id)

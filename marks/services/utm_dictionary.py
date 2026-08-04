@@ -142,6 +142,24 @@ def fetch_csv_rows(url):
     return list(csv.reader(io.StringIO(response.text)))
 
 
+def load_dictionary_sets():
+    """Множества активных значений справочника для валидации + префиксы шаблонов source."""
+    from marks.models import UtmDictionaryEntry
+
+    sets = {"source": set(), "medium": set(), "type": set(), "direction": set(), "funnel": set()}
+    template_prefixes = []
+    for entry in UtmDictionaryEntry.objects.filter(is_active=True):
+        if entry.field == "source" and entry.is_template:
+            prefix = entry.value.split("<", 1)[0]
+            if prefix:
+                template_prefixes.append(prefix)
+            continue
+        if entry.field in sets:
+            sets[entry.field].add(entry.value)
+    sets["source_template_prefixes"] = template_prefixes
+    return sets
+
+
 def sync_entries(entries):
     """Upsert записей справочника + деактивация исчезнувших (по затронутым полям).
 

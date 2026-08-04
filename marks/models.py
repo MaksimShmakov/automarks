@@ -437,6 +437,7 @@ class Tag(models.Model):
     utm_content = models.CharField(max_length=255, blank=True, null=True)
     budget = models.DecimalField(max_digits=12, decimal_places=2, default=None, null=True, blank=True, verbose_name="Бюджет")
     url = models.CharField(max_length=500, blank=True, null=True)
+    pending_review = models.BooleanField(default=False, help_text="Шаблонный source — на заявку Грише")
     created_at = models.DateTimeField(auto_now_add=True)
 
 

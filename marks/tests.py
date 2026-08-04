@@ -1657,3 +1657,117 @@ class SyncUtmDictionaryTests(TestCase):
             call_command("sync_utm_dictionary")
         self.assertEqual(UtmDictionaryEntry.objects.filter(field="medium").count(), 2)
         fetch_mock.assert_called_once()
+
+
+class BotTagEnforcementTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.marketer = user_model.objects.create_user(username="mktr", password="StrongPass123!")
+        self.marketer.profile.role = UserProfile.Role.MARKETER
+        self.marketer.profile.save(update_fields=["role"])
+        self.product = Product.objects.create(name="P")
+        self.bot = Bot.objects.create(name="testbot", product=self.product)
+        self.branch = Branch.objects.create(bot=self.bot, name="Main", code="MN")
+        # Ветка при создании автоматически заводит первую метку (существующая метка).
+        self.existing_tag = self.branch.tags.first()
+        _seed_min_dictionary()
+        self.client.force_login(self.marketer)
+
+    def _create_payload(self, **overrides):
+        payload = {
+            "create_tag": "1",
+            "source": "yandex",
+            "medium": "cpc",
+            "mark_type": "acq",
+            "direction": "oge",
+            "funnel": "bot",
+            "name": "pyweek2026",
+            "utm_term": "interests",
+            "utm_content": "ad-456",
+            "source_custom": "",
+            "funnel_custom": "",
+            "budget": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_enforced_tag_created_with_clean_campaign(self):
+        before = self.branch.tags.count()
+        self.client.post(reverse("tags_list", args=[self.branch.id]), self._create_payload())
+        self.assertEqual(self.branch.tags.count(), before + 1)
+        tag = self.branch.tags.exclude(pk=self.existing_tag.pk).latest("id")
+        self.assertEqual(tag.utm_campaign, "acq_oge_bot_pyweek2026")
+        self.assertEqual(tag.utm_source, "yandex")
+        self.assertFalse(tag.pending_review)
+        self.assertTrue(tag.number)
+        self.assertIn("telegram.me/testbot?start=", tag.url)
+
+    def test_source_outside_dictionary_rejected(self):
+        before = self.branch.tags.count()
+        self.client.post(reverse("tags_list", args=[self.branch.id]), self._create_payload(source="made-up"))
+        self.assertEqual(self.branch.tags.count(), before)
+
+    def test_dashed_funnel_in_tag(self):
+        self.client.post(reverse("tags_list", args=[self.branch.id]), self._create_payload(funnel_custom="python2026"))
+        tag = self.branch.tags.exclude(pk=self.existing_tag.pk).latest("id")
+        self.assertEqual(tag.utm_campaign, "acq_oge_bot-python2026_pyweek2026")
+
+    def test_template_source_sets_pending_review(self):
+        self.client.post(
+            reverse("tags_list", args=[self.branch.id]),
+            self._create_payload(source="tg-<имя>", source_custom="python2026"),
+        )
+        tag = self.branch.tags.exclude(pk=self.existing_tag.pk).latest("id")
+        self.assertEqual(tag.utm_source, "tg-python2026")
+        self.assertTrue(tag.pending_review)
+
+    def test_existing_tag_untouched(self):
+        before_url = self.existing_tag.url
+        before_source = self.existing_tag.utm_source
+        self.client.post(reverse("tags_list", args=[self.branch.id]), self._create_payload())
+        self.existing_tag.refresh_from_db()
+        self.assertEqual(self.existing_tag.url, before_url)
+        self.assertEqual(self.existing_tag.utm_source, before_source)
+        self.assertFalse(self.existing_tag.pending_review)
+
+    def test_bot_api_returns_clean_utm_by_number(self):
+        self.client.post(reverse("tags_list", args=[self.branch.id]), self._create_payload())
+        tag = self.branch.tags.exclude(pk=self.existing_tag.pk).latest("id")
+        response = self.client.get(reverse("bot_api", kwargs={"bot_name": "testbot"}), {"number": tag.number})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "acq_oge_bot_pyweek2026")
+
+
+class TagCsvImportEnforcementTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.marketer = user_model.objects.create_user(username="mktr", password="StrongPass123!")
+        self.marketer.profile.role = UserProfile.Role.MARKETER
+        self.marketer.profile.save(update_fields=["role"])
+        self.product = Product.objects.create(name="P")
+        self.bot = Bot.objects.create(name="testbot", product=self.product)
+        self.branch = Branch.objects.create(bot=self.bot, name="Main", code="MN")
+        _seed_min_dictionary()
+        self.client.force_login(self.marketer)
+
+    def _upload(self, csv_text):
+        upload = SimpleUploadedFile("tags.csv", csv_text.encode("utf-8"), content_type="text/csv")
+        return self.client.post(reverse("import_tags_csv", args=[self.branch.id]), {"file": upload})
+
+    def test_valid_rows_imported(self):
+        before = self.branch.tags.count()
+        header = "utm_source,utm_medium,utm_campaign,utm_term,utm_content\n"
+        self._upload(header + "yandex,cpc,acq_oge_bot_alpha,interests,ad-456\n")
+        self.assertEqual(self.branch.tags.count(), before + 1)
+
+    def test_invalid_source_row_rejected(self):
+        before = self.branch.tags.count()
+        header = "utm_source,utm_medium,utm_campaign,utm_term,utm_content\n"
+        self._upload(header + "badsource,cpc,acq_oge_bot_alpha,interests,ad-456\n")
+        self.assertEqual(self.branch.tags.count(), before)
+
+    def test_invalid_campaign_structure_rejected(self):
+        before = self.branch.tags.count()
+        header = "utm_source,utm_medium,utm_campaign,utm_term,utm_content\n"
+        self._upload(header + "yandex,cpc,justonepart,interests,ad-456\n")
+        self.assertEqual(self.branch.tags.count(), before)
