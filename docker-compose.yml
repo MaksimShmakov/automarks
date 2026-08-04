@@ -1,6 +1,6 @@
-version: "3.9"
-
-services:
+version: "3.9"
+
+services:
   db:
     image: postgres:16-alpine
     ports:
@@ -13,27 +13,27 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     command: ["postgres", "-c", "listen_addresses=*", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  web:
-    build: .
-    ports:
-      - "8082:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DEBUG: "0"
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    ports:
+      - "8082:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
       TELEGRAM_NOTIFY_BOT_TOKEN: ${TELEGRAM_NOTIFY_BOT_TOKEN}
@@ -46,31 +46,36 @@ services:
       WEEKLY_TASKS_REPORT_CHAT_ID: ${WEEKLY_TASKS_REPORT_CHAT_ID}
       WEEKLY_TASKS_REPORT_TZ: ${WEEKLY_TASKS_REPORT_TZ}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
-    volumes:
-      - ${STATIC_MOUNT:-static}:/app/staticfiles
-      - ${MEDIA_MOUNT:-media}:/app/media
-    restart: always
-
-
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --cleanup --interval 30
-    restart: always
-
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
-      - ./docker/certbot-renew.sh:/certbot-renew.sh:ro
-    entrypoint: ["/bin/sh","/certbot-renew.sh"]
-    restart: unless-stopped
-
-volumes:
-  pgdata:
-  static:
-  media:
-  letsencrypt:
-  certbot-www:
+
+      SHORTLINK_BASE_DOMAIN: ${SHORTLINK_BASE_DOMAIN:-https://automarks.tw1.ru}
+      UTM_DICTIONARY_MEDIUM_CSV_URL: ${UTM_DICTIONARY_MEDIUM_CSV_URL:-}
+      UTM_DICTIONARY_SOURCE_CSV_URL: ${UTM_DICTIONARY_SOURCE_CSV_URL:-}
+      UTM_DICTIONARY_CAMPAIGN_CSV_URL: ${UTM_DICTIONARY_CAMPAIGN_CSV_URL:-}
+    volumes:
+      - ${STATIC_MOUNT:-static}:/app/staticfiles
+      - ${MEDIA_MOUNT:-media}:/app/media
+    restart: always
+
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --interval 30
+    restart: always
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+      - ./docker/certbot-renew.sh:/certbot-renew.sh:ro
+    entrypoint: ["/bin/sh","/certbot-renew.sh"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  static:
+  media:
+  letsencrypt:
+  certbot-www:
