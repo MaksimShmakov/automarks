@@ -9,6 +9,12 @@
     <p class="text-muted mb-4">Выберите действие:</p>
 
     <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <a href="{% url 'marks_new' %}" class="btn btn-success w-100 py-3">Генератор UTM-меток</a>
+      </div>
+      <div class="col-12 col-md-6">
+        <a href="{% url 'marks_registry' %}" class="btn btn-outline-success w-100 py-3">Реестр меток</a>
+      </div>
       <div class="col-12 col-md-4">
         <a href="{% url 'bots_list' %}" class="btn btn-primary w-100 py-3">Создать автометки</a>
       </div>

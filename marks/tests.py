@@ -1368,9 +1368,10 @@ class MarkGeneratorTests(TestCase):
                 payload.pop(key, None)
         return payload
 
-    def test_registry_denied_for_bot_user(self):
+    def test_registry_allowed_for_bot_user(self):
+        # Базовый доступ: оператор ботов тоже видит генератор/реестр.
         self.client.force_login(self.bot_user)
-        self.assertEqual(self.client.get(reverse("marks_registry")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("marks_registry")).status_code, 200)
 
     def test_generator_opens_for_marketer(self):
         self.client.force_login(self.marketer)

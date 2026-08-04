@@ -2135,7 +2135,7 @@ def _export_marks_excel(links):
 
 
 @login_required
-@require_roles("admin", "manager", "marketer")
+@require_roles("admin", "manager", "marketer", "bot_user")
 def marks_registry(request):
     """Реестр меток: фильтры, живые клики (счётчик сокращателя), экспорт в Excel."""
     links, applied = _filter_marked_links(request)
@@ -2156,7 +2156,7 @@ def marks_registry(request):
 
 
 @login_required
-@require_roles("admin", "manager", "marketer")
+@require_roles("admin", "manager", "marketer", "bot_user")
 def marks_new(request):
     """Генератор метки: собирает UTM из справочника, создаёт запись реестра и (опц.) короткую ссылку."""
     if request.method == "POST":
