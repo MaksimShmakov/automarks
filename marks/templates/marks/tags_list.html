@@ -69,6 +69,7 @@
           <th>utm_term</th>
           <th>utm_content</th>
           <th>budget</th>
+          {% if can_see_all %}<th>Автор</th>{% endif %}
           <th>URL</th>
         </tr>
       </thead>
@@ -82,6 +83,7 @@
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_term">{{ tag.utm_term|default:"-" }}</td>
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="utm_content">{{ tag.utm_content|default:"-" }}</td>
           <td class="editable" data-model="tag" data-id="{{ tag.id }}" data-field="budget">{{ tag.budget|default_if_none:"" }}</td>
+          {% if can_see_all %}<td>{{ tag.created_by.username|default:"—" }}</td>{% endif %}
           <td>
             <a href="{{ tag.url }}" target="_blank" class="link-primary">{{ tag.url }}</a>
             <div class="d-flex flex-wrap gap-2 mt-2">

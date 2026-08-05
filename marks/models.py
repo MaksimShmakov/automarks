@@ -438,6 +438,13 @@ class Tag(models.Model):
     budget = models.DecimalField(max_digits=12, decimal_places=2, default=None, null=True, blank=True, verbose_name="Бюджет")
     url = models.CharField(max_length=500, blank=True, null=True)
     pending_review = models.BooleanField(default=False, help_text="Шаблонный source — на заявку Грише")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_tags",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
 

@@ -438,6 +438,7 @@ def duplicate_all_tags(request, branch_id):
                 utm_term=tag.utm_term,
                 utm_content=tag.utm_content,
                 budget=tag.budget,
+                created_by=request.user,
             )
             total_created += 1
             created_ids.append(new_tag.id)
@@ -720,7 +721,11 @@ def branches_list(request, bot_id):
 @require_roles('admin', 'manager', 'marketer', 'analyst', UserProfile.Role.BOT_USER)
 def tags_list(request, branch_id):
     branch = get_object_or_404(Branch, id=branch_id)
-    tags = _active_tags_qs(branch.tags)
+    tags = _active_tags_qs(branch.tags).select_related("created_by")
+    # marketer/оператор видят только свои метки (+ легаси без автора); привилегированные — все.
+    can_see_all = _can_see_all_marks(request.user)
+    if not can_see_all:
+        tags = tags.filter(Q(created_by=request.user) | Q(created_by__isnull=True))
     patchnotes = branch.patch_notes.all()
     has_copied = bool(request.session.get("copied_tags"))
 
@@ -742,6 +747,7 @@ def tags_list(request, branch_id):
                     utm_content=data["utm_content"],
                     budget=data.get("budget"),
                     pending_review=data.get("pending_review", False),
+                    created_by=request.user,
                 )
                 tag.save()
                 _set_last_tag_action(
@@ -772,6 +778,7 @@ def tags_list(request, branch_id):
             "has_copied": has_copied,
             "import_form": import_form,
             "import_columns": TagImportForm.EXPECTED_COLUMNS,
+            "can_see_all": can_see_all,
         },
     )
 
@@ -825,7 +832,7 @@ def paste_tags(request, branch_id):
         return redirect("tags_list", branch_id=branch.id)
     created_ids = []
     for tag_data in copied_tags:
-        new_tag = Tag.objects.create(branch=branch, **tag_data)
+        new_tag = Tag.objects.create(branch=branch, created_by=request.user, **tag_data)
         created_ids.append(new_tag.id)
     if created_ids:
         _set_last_tag_action(
@@ -903,7 +910,7 @@ def import_tags_csv(request, branch_id):
         with transaction.atomic():
             for row in rows:
                 tag_kwargs = {col: (row.get(col) or "").strip() or None for col in expected}
-                new_tag = Tag.objects.create(branch=branch, **tag_kwargs)
+                new_tag = Tag.objects.create(branch=branch, created_by=request.user, **tag_kwargs)
                 created += 1
                 created_ids.append(new_tag.id)
     except Exception as exc:
@@ -938,6 +945,7 @@ def duplicate_tag(request, tag_id):
         utm_term=tag.utm_term,
         utm_content=tag.utm_content,
         budget=tag.budget,
+        created_by=request.user,
     )
     _set_last_tag_action(
         request,

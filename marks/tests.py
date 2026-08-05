@@ -23,6 +23,7 @@ from .models import (
     MarkedLink,
     Product,
     ShortLink,
+    Tag,
     TaskRequest,
     UserProfile,
     UtmDictionaryEntry,
@@ -1827,3 +1828,55 @@ class MarkVisibilityTests(TestCase):
         workbook = load_workbook(io.BytesIO(response.content))
         rows = list(workbook.active.iter_rows(values_only=True))
         self.assertEqual(len(rows), 2)  # заголовок + только своя метка
+
+
+class BotTagVisibilityTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_user(username="boss", password="StrongPass123!")
+        self.admin.profile.role = UserProfile.Role.ADMIN
+        self.admin.profile.save(update_fields=["role"])
+        self.mkt = user_model.objects.create_user(username="lena", password="StrongPass123!")
+        self.mkt.profile.role = UserProfile.Role.MARKETER
+        self.mkt.profile.save(update_fields=["role"])
+        self.other = user_model.objects.create_user(username="dima", password="StrongPass123!")
+        self.other.profile.role = UserProfile.Role.MARKETER
+        self.other.profile.save(update_fields=["role"])
+
+        self.product = Product.objects.create(name="P")
+        self.bot = Bot.objects.create(name="testbot", product=self.product)
+        self.branch = Branch.objects.create(bot=self.bot, name="Main", code="MN")
+        self.legacy_tag = self.branch.tags.first()  # автосоздана сигналом, created_by=None
+        self.mine = Tag.objects.create(
+            branch=self.branch, utm_campaign="acq_oge_bot_mine", created_by=self.mkt
+        )
+        self.theirs = Tag.objects.create(
+            branch=self.branch, utm_campaign="gen_ege_site_theirs", created_by=self.other
+        )
+
+    def _ids(self, response):
+        return {tag.id for tag in response.context["tags"]}
+
+    def test_marketer_sees_own_and_legacy_not_others(self):
+        self.client.force_login(self.mkt)
+        response = self.client.get(reverse("tags_list", args=[self.branch.id]))
+        ids = self._ids(response)
+        self.assertIn(self.mine.id, ids)
+        self.assertIn(self.legacy_tag.id, ids)
+        self.assertNotIn(self.theirs.id, ids)
+        self.assertFalse(response.context["can_see_all"])
+
+    def test_admin_sees_all(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("tags_list", args=[self.branch.id]))
+        self.assertEqual(self._ids(response), {self.legacy_tag.id, self.mine.id, self.theirs.id})
+        self.assertTrue(response.context["can_see_all"])
+
+    def test_bot_api_resolves_tag_of_any_author(self):
+        # Атрибуция не сломана: bot_api резолвит метку любого автора по номеру.
+        response = self.client.get(
+            reverse("bot_api", kwargs={"bot_name": "testbot"}),
+            {"number": self.theirs.number},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "gen_ege_site_theirs")
