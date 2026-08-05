@@ -2055,11 +2055,25 @@ def short_link_redirect(request, code):
     return redirect(link.target_url)
 
 
+# Кто видит ВЕСЬ реестр (лог всех авторов). Остальные (маркетолог/оператор) — только свои метки.
+MARKS_FULL_VIEW_ROLES = {"admin", "manager", "analyst"}
+
+
+def _can_see_all_marks(user):
+    if getattr(user, "is_superuser", False):
+        return True
+    return get_user_role(user) in MARKS_FULL_VIEW_ROLES
+
+
 def _filter_marked_links(request):
-    """Применяет к реестру фильтры из GET (автор/source/campaign/направление/даты)."""
+    """Применяет к реестру фильтры из GET. Не-привилегированные видят только свои метки."""
     links = MarkedLink.objects.select_related("author", "short_link").all()
 
-    author_id = (request.GET.get("author") or "").strip()
+    can_see_all = _can_see_all_marks(request.user)
+    if not can_see_all:
+        links = links.filter(author=request.user)
+
+    author_id = (request.GET.get("author") or "").strip() if can_see_all else ""
     source = (request.GET.get("source") or "").strip()
     campaign = (request.GET.get("campaign") or "").strip()
     direction = (request.GET.get("direction") or "").strip()
@@ -2090,7 +2104,7 @@ def _filter_marked_links(request):
         "date_from": date_from,
         "date_to": date_to,
     }
-    return links, applied
+    return links, applied, can_see_all
 
 
 def _export_marks_excel(links):
@@ -2138,7 +2152,7 @@ def _export_marks_excel(links):
 @require_roles("admin", "manager", "marketer", "bot_user")
 def marks_registry(request):
     """Реестр меток: фильтры, живые клики (счётчик сокращателя), экспорт в Excel."""
-    links, applied = _filter_marked_links(request)
+    links, applied, can_see_all = _filter_marked_links(request)
 
     if request.GET.get("export") == "excel":
         return _export_marks_excel(links)
@@ -2146,7 +2160,11 @@ def marks_registry(request):
     context = {
         "links": links,
         "filters": applied,
-        "authors": User.objects.filter(marked_links__isnull=False).distinct().order_by("username"),
+        "can_see_all": can_see_all,
+        "authors": (
+            User.objects.filter(marked_links__isnull=False).distinct().order_by("username")
+            if can_see_all else []
+        ),
         "sources": sorted(
             v for v in MarkedLink.objects.order_by().values_list("utm_source", flat=True).distinct() if v
         ),

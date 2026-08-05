@@ -10,7 +10,11 @@
 
 <div class="card shadow-sm border-0 mb-3">
   <div class="card-body">
+    {% if not can_see_all %}
+      <div class="alert alert-info py-2 mb-3">Показаны только ваши метки.</div>
+    {% endif %}
     <form method="get" class="row g-2 align-items-end">
+      {% if can_see_all %}
       <div class="col-md-2">
         <label class="form-label small mb-1">Автор</label>
         <select name="author" class="form-select form-select-sm">
@@ -20,6 +24,7 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div class="col-md-2">
         <label class="form-label small mb-1">source</label>
         <select name="source" class="form-select form-select-sm">

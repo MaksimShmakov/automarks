@@ -1417,8 +1417,9 @@ class MarkGeneratorTests(TestCase):
 class MarkRegistryFilterTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
+        # Действующий пользователь — админ: видит весь реестр (фильтры проверяем на всех метках).
         self.alice = user_model.objects.create_user(username="alice", password="StrongPass123!")
-        self.alice.profile.role = UserProfile.Role.MARKETER
+        self.alice.profile.role = UserProfile.Role.ADMIN
         self.alice.profile.save(update_fields=["role"])
         self.bob = user_model.objects.create_user(username="bob", password="StrongPass123!")
         self.bob.profile.role = UserProfile.Role.MARKETER
@@ -1772,3 +1773,57 @@ class TagCsvImportEnforcementTests(TestCase):
         header = "utm_source,utm_medium,utm_campaign,utm_term,utm_content\n"
         self._upload(header + "yandex,cpc,justonepart,interests,ad-456\n")
         self.assertEqual(self.branch.tags.count(), before)
+
+
+class MarkVisibilityTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_user(username="boss", password="StrongPass123!")
+        self.admin.profile.role = UserProfile.Role.ADMIN
+        self.admin.profile.save(update_fields=["role"])
+        self.mkt = user_model.objects.create_user(username="lena", password="StrongPass123!")
+        self.mkt.profile.role = UserProfile.Role.MARKETER
+        self.mkt.profile.save(update_fields=["role"])
+        self.other = user_model.objects.create_user(username="dima", password="StrongPass123!")
+        self.other.profile.role = UserProfile.Role.MARKETER
+        self.other.profile.save(update_fields=["role"])
+
+        self.mine = MarkedLink.objects.create(
+            original_url="https://el-ed.ru/oge", utm_source="yandex", utm_medium="cpc",
+            utm_campaign="acq_oge_bot_mine", utm_term="t", utm_content="",
+            mark_type="acq", direction="oge", funnel="bot", name="mine",
+            full_url="https://el-ed.ru/oge?utm_source=yandex", author=self.mkt,
+        )
+        self.theirs = MarkedLink.objects.create(
+            original_url="https://el-ed.ru/ege", utm_source="vk_ads", utm_medium="cpm",
+            utm_campaign="gen_ege_site_theirs", utm_term="t2", utm_content="",
+            mark_type="gen", direction="ege", funnel="site", name="theirs",
+            full_url="https://el-ed.ru/ege?utm_source=vk_ads", author=self.other,
+        )
+
+    def test_marketer_sees_only_own(self):
+        self.client.force_login(self.mkt)
+        response = self.client.get(reverse("marks_registry"))
+        ids = {link.id for link in response.context["links"]}
+        self.assertEqual(ids, {self.mine.id})
+        self.assertFalse(response.context["can_see_all"])
+
+    def test_admin_sees_all(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("marks_registry"))
+        ids = {link.id for link in response.context["links"]}
+        self.assertEqual(ids, {self.mine.id, self.theirs.id})
+        self.assertTrue(response.context["can_see_all"])
+
+    def test_marketer_cannot_bypass_via_author_param(self):
+        self.client.force_login(self.mkt)
+        response = self.client.get(reverse("marks_registry"), {"author": self.other.id})
+        ids = {link.id for link in response.context["links"]}
+        self.assertEqual(ids, {self.mine.id})
+
+    def test_marketer_export_only_own(self):
+        self.client.force_login(self.mkt)
+        response = self.client.get(reverse("marks_registry"), {"export": "excel"})
+        workbook = load_workbook(io.BytesIO(response.content))
+        rows = list(workbook.active.iter_rows(values_only=True))
+        self.assertEqual(len(rows), 2)  # заголовок + только своя метка
