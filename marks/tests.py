@@ -21,6 +21,7 @@ from .models import (
     Branch,
     Experiment,
     MarkedLink,
+    OutboundNotification,
     Product,
     ShortLink,
     Tag,
@@ -1880,3 +1881,49 @@ class BotTagVisibilityTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "gen_ege_site_theirs")
+
+
+class NotificationRetryTests(TestCase):
+    def _make_task(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="creator", password="StrongPass123!")
+        return TaskRequest.objects.create(
+            task_type=TaskRequest.Type.PATCH,
+            deadline=timezone.now() + timedelta(days=1),
+            created_by=user,
+        )
+
+    @override_settings(TELEGRAM_NOTIFY_BOT_TOKEN="tkn", TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID="123")
+    @patch("marks.services.telegram._send_message", return_value=(False, "network error"))
+    def test_failed_notification_enqueued(self, mock_send):
+        from marks.services.telegram import notify_new_task
+        task = self._make_task()
+        ok, error = notify_new_task(task)
+        self.assertTrue(ok)  # веб-запрос не падает — уведомление в очереди
+        self.assertEqual(OutboundNotification.objects.filter(delivered=False).count(), 1)
+
+    @override_settings(TELEGRAM_NOTIFY_BOT_TOKEN="", TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID="")
+    @patch("marks.services.telegram._send_message", return_value=(False, "no token"))
+    def test_config_error_not_enqueued(self, mock_send):
+        from marks.services.telegram import notify_new_task
+        task = self._make_task()
+        ok, error = notify_new_task(task)
+        self.assertFalse(ok)
+        self.assertEqual(OutboundNotification.objects.count(), 0)
+
+    @patch("marks.management.commands.retry_notifications._send_message", return_value=(True, ""))
+    def test_retry_command_delivers_pending(self, mock_send):
+        OutboundNotification.objects.create(chat_id="123", text="hi")
+        call_command("retry_notifications")
+        note = OutboundNotification.objects.get()
+        self.assertTrue(note.delivered)
+        self.assertEqual(note.attempts, 1)
+        self.assertIsNotNone(note.delivered_at)
+
+    @patch("marks.management.commands.retry_notifications._send_message", return_value=(False, "still failing"))
+    def test_retry_command_increments_attempts_on_failure(self, mock_send):
+        OutboundNotification.objects.create(chat_id="123", text="hi")
+        call_command("retry_notifications")
+        note = OutboundNotification.objects.get()
+        self.assertFalse(note.delivered)
+        self.assertEqual(note.attempts, 1)

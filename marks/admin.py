@@ -14,6 +14,7 @@ from .models import (
     ShortLink,
     UtmDictionaryEntry,
     MarkedLink,
+    OutboundNotification,
 )
 
 
@@ -112,3 +113,11 @@ class MarkedLinkAdmin(admin.ModelAdmin):
     list_display = ("utm_campaign", "utm_source", "utm_medium", "author", "pending_review", "created_at")
     list_filter = ("utm_source", "direction", "pending_review")
     search_fields = ("utm_campaign", "original_url", "full_url", "author__username")
+
+
+@admin.register(OutboundNotification)
+class OutboundNotificationAdmin(admin.ModelAdmin):
+    list_display = ("chat_id", "delivered", "attempts", "created_at", "delivered_at", "last_error")
+    list_filter = ("delivered",)
+    search_fields = ("chat_id", "text", "last_error")
+    readonly_fields = ("created_at", "delivered_at")

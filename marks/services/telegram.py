@@ -1,5 +1,6 @@
 import html
 import logging
+import time
 import uuid
 from datetime import datetime as dt_datetime
 from urllib.error import HTTPError, URLError
@@ -83,7 +84,7 @@ def _build_task_details(task):
     return "\n".join(lines)
 
 
-def _send_message(chat_id, text):
+def _send_message(chat_id, text, attempts=2):
     token = _clean_env_value(getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", ""))
     chat_id = _clean_env_value(chat_id)
     if not token or not chat_id:
@@ -97,26 +98,52 @@ def _send_message(chat_id, text):
     }
     data = parse.urlencode(payload).encode("utf-8")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    try:
-        req = request.Request(url=url, data=data, method="POST")
-        with request.urlopen(req, timeout=7):
-            return True, ""
-    except HTTPError as exc:
-        details = ""
+
+    last_error = "Неизвестная ошибка отправки в Telegram"
+    for attempt in range(max(1, attempts)):
         try:
-            body = exc.read().decode("utf-8", errors="replace")
-            data = json.loads(body)
-            details = data.get("description") or body
-        except Exception:
-            details = str(exc)
-        logger.exception("Telegram HTTP error")
-        return False, f"Telegram API error: {details}"
-    except URLError as exc:
-        logger.exception("Telegram URL error")
-        return False, f"Telegram network error: {exc.reason}"
-    except Exception:
-        logger.exception("Failed to send Telegram notification")
-        return False, "Неизвестная ошибка отправки в Telegram"
+            req = request.Request(url=url, data=data, method="POST")
+            with request.urlopen(req, timeout=10):
+                return True, ""
+        except HTTPError as exc:
+            details = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+                parsed = json.loads(body)
+                details = parsed.get("description") or body
+            except Exception:
+                details = str(exc)
+            logger.warning("Telegram HTTP error (attempt %s): %s", attempt + 1, details)
+            last_error = f"Telegram API error: {details}"
+        except URLError as exc:
+            logger.warning("Telegram URL error (attempt %s): %s", attempt + 1, exc.reason)
+            last_error = f"Telegram network error: {exc.reason}"
+        except Exception as exc:
+            logger.warning("Telegram send error (attempt %s): %s", attempt + 1, exc)
+            last_error = "Неизвестная ошибка отправки в Telegram"
+        if attempt + 1 < max(1, attempts):
+            time.sleep(1)
+    return False, last_error
+
+
+def _deliver(chat_id, text):
+    """Отправить уведомление; при неудаче — поставить в очередь на повтор (cron), не блокируя запрос."""
+    ok, error = _send_message(chat_id, text)
+    if ok:
+        return True, ""
+
+    token = _clean_env_value(getattr(settings, "TELEGRAM_NOTIFY_BOT_TOKEN", ""))
+    normalized_chat = _clean_env_value(chat_id)
+    # Конфиг-ошибки (нет токена/chat) повтором не спасти — в очередь не кладём.
+    if token and normalized_chat:
+        from ..models import OutboundNotification
+
+        OutboundNotification.objects.create(
+            chat_id=normalized_chat, text=text, last_error=(error or "")[:500]
+        )
+        logger.warning("Telegram-уведомление поставлено в очередь на повтор: %s", error)
+        return True, ""
+    return False, error
 
 
 def _normalize_direct_chat(value):
@@ -193,7 +220,7 @@ def notify_new_task(task):
     platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()
     header = f"[{_safe(platform_name)}] Новая задача" if platform_name else "Новая задача"
     text = f"{header}\n\n{_build_task_details(task)}"
-    return _send_message(chat_id=chat_id, text=text)
+    return _deliver(chat_id=chat_id, text=text)
 
 
 def notify_status_change(task, old_status, changed_by):
@@ -213,7 +240,7 @@ def notify_status_change(task, old_status, changed_by):
         f"Изменил: {_safe(changed_by.username if changed_by else '-')}\n\n"
         f"{details}"
     )
-    return _send_message(chat_id=chat_id, text=text)
+    return _deliver(chat_id=chat_id, text=text)
 
 
 def notify_done_to_user(task, tg_username):

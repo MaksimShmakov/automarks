@@ -594,6 +594,25 @@ class MarkedLink(models.Model):
         return f"{self.utm_campaign} → {(self.original_url or '')[:40]}"
 
 
+class OutboundNotification(models.Model):
+    """Очередь Telegram-уведомлений задачника: неотправленные добиваются повтором (cron)."""
+
+    chat_id = models.CharField(max_length=64)
+    text = models.TextField()
+    delivered = models.BooleanField(default=False)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        state = "✓" if self.delivered else f"✗×{self.attempts}"
+        return f"[{state}] {self.chat_id}: {self.text[:40]}"
+
+
 class UserProfile(models.Model):
     class Role(models.TextChoices):
         ADMIN = "admin", "Максимальный"
