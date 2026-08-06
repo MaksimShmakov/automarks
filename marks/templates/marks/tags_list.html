@@ -110,64 +110,73 @@
       {% csrf_token %}
       <input type="hidden" name="create_tag" value="1">
       <div class="col-md-6">
-        <label class="form-label">source</label>
+        <label class="form-label fw-bold">source</label>
         {{ form.source }}
         {% for error in form.source.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
       <div class="col-md-6">
-        <label class="form-label">medium</label>
+        <label class="form-label fw-bold">medium</label>
         {{ form.medium }}
         {% for error in form.medium.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
       <div class="col-md-12">
-        <label class="form-label">{{ form.source_custom.label }}</label>
+        <label class="form-label fw-bold">{{ form.source_custom.label }}</label>
         {{ form.source_custom }}
         <div class="form-text">Только для шаблонного source (<code>tg-&lt;имя&gt;</code> и т.п.) — метка уйдёт «на заявку Грише».</div>
         {% for error in form.source_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
-      <div class="col-md-4">
-        <label class="form-label">тип</label>
-        {{ form.mark_type }}
-        {% for error in form.mark_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+
+      <div class="col-12">
+        <div class="border rounded p-3 bg-light">
+          <div class="fw-bold mb-1">Метка кампании</div>
+          <div class="form-text mt-0 mb-3">Собирается сама: <code>тип_направление_воронка_имя</code> (напр. <code>acq_oge_bot_pyweek2026</code>).</div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-bold">тип</label>
+              {{ form.mark_type }}
+              {% for error in form.mark_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-bold">направление</label>
+              {{ form.direction }}
+              {% for error in form.direction.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-bold">воронка</label>
+              {{ form.funnel }}
+              {% for error in form.funnel.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-bold">имя кампании</label>
+              {{ form.name }}
+              {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-bold">{{ form.funnel_custom.label }}</label>
+              {{ form.funnel_custom }}
+              <div class="form-text">Не обязательно: конкретный канал/бот через дефис (<code>tgk-python2026</code>, <code>bot-efir</code>).</div>
+              {% for error in form.funnel_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="col-md-4">
-        <label class="form-label">направление</label>
-        {{ form.direction }}
-        {% for error in form.direction.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">воронка</label>
-        {{ form.funnel }}
-        {% for error in form.funnel.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-      </div>
-      <div class="col-md-12">
-        <label class="form-label">{{ form.funnel_custom.label }}</label>
-        {{ form.funnel_custom }}
-        <div class="form-text">Не обязательно: конкретный канал/бот через дефис (<code>tgk-python2026</code>, <code>bot-efir</code>).</div>
-        {% for error in form.funnel_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">имя кампании</label>
-        {{ form.name }}
-        {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">term</label>
+        <label class="form-label fw-bold">term</label>
         {{ form.utm_term }}
         {% for error in form.utm_term.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
       <div class="col-md-4">
-        <label class="form-label">content</label>
+        <label class="form-label fw-bold">content</label>
         {{ form.utm_content }}
         {% for error in form.utm_content.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
       <div class="col-md-4">
-        <label class="form-label">бюджет</label>
+        <label class="form-label fw-bold">бюджет</label>
         {{ form.budget }}
         {% for error in form.budget.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
       <div class="col-12">
-        <div class="form-text mb-2">campaign соберётся сам: <code>тип_направление_воронка_имя</code>. Значения — только из справочника.</div>
         <button type="submit" class="btn btn-primary">Создать метку</button>
       </div>
     </form>

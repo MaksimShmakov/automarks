@@ -23,71 +23,72 @@
           {% csrf_token %}
 
           <div class="mb-3">
-            <label class="form-label">{{ form.original_url.label }}</label>
+            <label class="form-label fw-bold">{{ form.original_url.label }}</label>
             {{ form.original_url }}
             {% for error in form.original_url.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           </div>
 
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label">{{ form.source.label }}</label>
+              <label class="form-label fw-bold">{{ form.source.label }}</label>
               {{ form.source }}
               {% for error in form.source.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label">{{ form.medium.label }}</label>
+              <label class="form-label fw-bold">{{ form.medium.label }}</label>
               {{ form.medium }}
               {% for error in form.medium.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
           </div>
 
           <div class="mb-3">
-            <label class="form-label">{{ form.source_custom.label }}</label>
+            <label class="form-label fw-bold">{{ form.source_custom.label }}</label>
             {{ form.source_custom }}
             <div class="form-text">Заполняй только если выбрал шаблонный source (<code>tg-&lt;имя&gt;</code>, <code>&lt;partner&gt;</code> и т.п.) — такая метка уйдёт «на заявку Грише».</div>
             {% for error in form.source_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           </div>
 
-          <div class="row">
-            <div class="col-md-4 mb-3">
-              <label class="form-label">{{ form.mark_type.label }}</label>
-              {{ form.mark_type }}
-              {% for error in form.mark_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          <div class="border rounded p-3 bg-light mb-3">
+            <div class="fw-bold mb-1">Метка кампании</div>
+            <div class="form-text mt-0 mb-3">Собирается сама: <code>тип_направление_воронка_имя</code> (напр. <code>acq_oge_bot_pyweek2026</code>).</div>
+            <div class="row">
+              <div class="col-md-3 mb-3">
+                <label class="form-label fw-bold">тип</label>
+                {{ form.mark_type }}
+                {% for error in form.mark_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-md-3 mb-3">
+                <label class="form-label fw-bold">направление</label>
+                {{ form.direction }}
+                {% for error in form.direction.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-md-3 mb-3">
+                <label class="form-label fw-bold">воронка</label>
+                {{ form.funnel }}
+                {% for error in form.funnel.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-md-3 mb-3">
+                <label class="form-label fw-bold">имя кампании</label>
+                {{ form.name }}
+                {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-bold">{{ form.funnel_custom.label }}</label>
+                {{ form.funnel_custom }}
+                <div class="form-text">Не обязательно: конкретный канал/бот через дефис (<code>tgk-python2026</code>, <code>bot-efir</code>).</div>
+                {% for error in form.funnel_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
             </div>
-            <div class="col-md-4 mb-3">
-              <label class="form-label">{{ form.direction.label }}</label>
-              {{ form.direction }}
-              {% for error in form.direction.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-4 mb-3">
-              <label class="form-label">{{ form.funnel.label }}</label>
-              {{ form.funnel }}
-              {% for error in form.funnel.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">{{ form.funnel_custom.label }}</label>
-            {{ form.funnel_custom }}
-            <div class="form-text">Не обязательно. Если реклама ведёт в конкретный канал/бот — впиши имя, воронка станет <code>воронка-имя</code> (напр. <code>tgk-python2026</code>, <code>bot-efir</code>).</div>
-            {% for error in form.funnel_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">{{ form.name.label }}</label>
-            {{ form.name }}
-            <div class="form-text">campaign соберётся как <code>тип_направление_воронка_имя</code>. Внутри имени — дефис, не подчёркивание.</div>
-            {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           </div>
 
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label">{{ form.utm_term.label }}</label>
+              <label class="form-label fw-bold">{{ form.utm_term.label }}</label>
               {{ form.utm_term }}
               {% for error in form.utm_term.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label">{{ form.utm_content.label }}</label>
+              <label class="form-label fw-bold">{{ form.utm_content.label }}</label>
               {{ form.utm_content }}
               {% for error in form.utm_content.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
