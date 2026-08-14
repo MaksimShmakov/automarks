@@ -180,3 +180,19 @@ WEEKLY_TASKS_REPORT_CHAT_ID = os.getenv("WEEKLY_TASKS_REPORT_CHAT_ID", "")
 WEEKLY_TASKS_REPORT_TZ = os.getenv("WEEKLY_TASKS_REPORT_TZ", "Europe/Moscow")
 TASKS_TIME_ZONE = os.getenv("TASKS_TIME_ZONE", TIME_ZONE or "UTC")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+
+# --- Раздел TikTok-воронок (порт el-tiktok-funnels-auto) ---------------------
+# Токен-гейт на Дев-панель + Кабинеты (один общий, server-side аналог X-Dev-Token).
+FUNNELS_DEV_TOKEN = os.getenv("FUNNELS_DEV_TOKEN", "")
+# Константы для генерации JS-скрипта лендинга.
+YM_COUNTER_ID = os.getenv("YM_COUNTER_ID", "")
+WEBHOOK_URL = os.getenv("FUNNELS_WEBHOOK_URL", "")
+WEBHOOK_TOKEN = os.getenv("FUNNELS_WEBHOOK_TOKEN", "")
+# База для рекламной UTM-ссылки (домен лендингов).
+LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "https://go-egeland.ru")
+# Синхронный dual-write воронок/кабинетов в склад через вебхук n8n `funnel-sync`.
+N8N_SYNC_URL = os.getenv("N8N_SYNC_URL", "")
+N8N_SYNC_TOKEN = os.getenv("N8N_SYNC_TOKEN", "")
+# Чат Telegram для уведомлений о новых заявках на воронку (опц.).
+FUNNELS_NOTIFY_CHAT_ID = os.getenv("FUNNELS_NOTIFY_CHAT_ID", "")

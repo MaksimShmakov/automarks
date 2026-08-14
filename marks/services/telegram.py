@@ -223,6 +223,29 @@ def notify_new_task(task):
     return _deliver(chat_id=chat_id, text=text)
 
 
+def notify_new_tiktok_funnel(funnel):
+    """Уведомить о новой заявке на TikTok-воронку (best-effort, с очередью-ретраем).
+
+    Шлёт в FUNNELS_NOTIFY_CHAT_ID; если не задан — падает на общий чат задач.
+    """
+    chat_id = (
+        getattr(settings, "FUNNELS_NOTIFY_CHAT_ID", "")
+        or getattr(settings, "TELEGRAM_NOTIFY_NEW_TASKS_CHAT_ID", "")
+    )
+    if not _clean_env_value(chat_id):
+        return False, "Не задан FUNNELS_NOTIFY_CHAT_ID"
+    endpoint = _safe(funnel.landing_endpoint or f"#{funnel.id}")
+    offer = _safe(funnel.offer or "-")
+    author = _safe(getattr(getattr(funnel, "created_by", None), "username", "") or "-")
+    text = (
+        "Новая заявка на TikTok-воронку\n\n"
+        f"Эндпоинт: {endpoint}\n"
+        f"Оффер: {offer}\n"
+        f"Автор: {author}"
+    )
+    return _deliver(chat_id=chat_id, text=text)
+
+
 def notify_status_change(task, old_status, changed_by):
     chat_id = getattr(settings, "TELEGRAM_NOTIFY_STATUS_CHAT_ID", "")
     platform_name = (getattr(settings, "TASKS_PLATFORM_NAME", "") or "").strip()

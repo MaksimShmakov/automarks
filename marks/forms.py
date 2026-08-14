@@ -16,6 +16,8 @@ from .models import (
     Product,
     Tag,
     TaskRequest,
+    TikTokAccount,
+    TikTokFunnelRequest,
     TrafficReport,
     UtmDictionaryEntry,
 )
@@ -771,3 +773,52 @@ class TagMarkForm(MarkForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields.pop("original_url", None)
+
+
+class TikTokFunnelIntakeForm(forms.ModelForm):
+    """Заявка на TikTok-воронку (маркетолог). Всё опционально — воронка
+    дозаполняется инкрементально ролями в дев-панели. UTM тоже правятся там."""
+
+    class Meta:
+        model = TikTokFunnelRequest
+        fields = [
+            "landing_endpoint",
+            "offer",
+            "bot_url",
+            "page_type",
+            "account_no",
+            "pixel_code",
+            "comment",
+        ]
+        widgets = {
+            "landing_endpoint": forms.TextInput(attrs={"class": "form-control", "placeholder": "/pasha_all"}),
+            "offer": forms.TextInput(attrs={"class": "form-control", "placeholder": "ell010005"}),
+            "bot_url": forms.TextInput(attrs={"class": "form-control", "placeholder": "https://telegram.me/efir_tt_el_bot"}),
+            "page_type": forms.Select(attrs={"class": "form-select"}),
+            "account_no": forms.TextInput(attrs={"class": "form-control", "placeholder": "напр. 9"}),
+            "pixel_code": forms.TextInput(attrs={"class": "form-control"}),
+            "comment": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.required = False
+        # Пустой выбор в page_type (черновик может ещё не знать тип лендинга).
+        self.fields["page_type"].choices = [("", "— не задан —")] + list(
+            TikTokFunnelRequest.PageType.choices
+        )
+
+
+class TikTokAccountForm(forms.ModelForm):
+    """Кабинет TikTok (дев-панель → Кабинеты). account_no — ключ, access_token обязателен."""
+
+    class Meta:
+        model = TikTokAccount
+        fields = ["account_no", "advertiser_id", "access_token", "note"]
+        widgets = {
+            "account_no": forms.TextInput(attrs={"class": "form-control", "placeholder": "напр. 9"}),
+            "advertiser_id": forms.TextInput(attrs={"class": "form-control"}),
+            "access_token": forms.TextInput(attrs={"class": "form-control"}),
+            "note": forms.TextInput(attrs={"class": "form-control"}),
+        }

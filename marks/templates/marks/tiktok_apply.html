@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Заявка на TikTok-воронку{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-7">
+    <h2 class="mb-3">Заявка на TikTok-воронку</h2>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="post" autocomplete="off" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">Эндпоинт лендинга</label>
+            {{ form.landing_endpoint }}
+            <div class="form-text">{{ form.landing_endpoint.help_text }} — можно вставить полный URL, он нормализуется.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Оффер</label>
+            {{ form.offer }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Тип лендинга</label>
+            {{ form.page_type }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Ссылка на бота</label>
+            {{ form.bot_url }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Номер кабинета (account_no)</label>
+            {{ form.account_no }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Pixel code</label>
+            {{ form.pixel_code }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Комментарий</label>
+            {{ form.comment }}
+          </div>
+          {% if form.non_field_errors %}
+            <div class="col-12"><div class="alert alert-danger mb-0">{{ form.non_field_errors }}</div></div>
+          {% endif %}
+          <div class="col-12">
+            <button class="btn btn-primary w-100">Создать заявку</button>
+          </div>
+        </form>
+        <div class="small text-muted mt-3">
+          Все поля опциональны — воронка дозаполняется по ролям в дев-панели.
+          Pixel/токен/UTM подключает разработчик после создания заявки.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

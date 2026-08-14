@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Скрипт лендинга #{{ funnel.id }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">JS-скрипт лендинга</h2>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'tiktok_panel' %}">← Дев-панель</a>
+</div>
+
+<p class="text-muted">
+  Воронка #{{ funnel.id }} · <code>{{ funnel.landing_endpoint }}</code> ·
+  тип: <b>{{ funnel.get_page_type_display }}</b> · pixel: <code>{{ funnel.pixel_code }}</code>
+</p>
+
+<button class="btn btn-primary btn-sm mb-2" onclick="copyScript()">Скопировать</button>
+<pre id="script-box" class="border rounded p-3 bg-white" style="white-space: pre; overflow-x: auto; max-height: 70vh;">{{ script }}</pre>
+
+<script>
+function copyScript() {
+  var text = document.getElementById('script-box').innerText;
+  navigator.clipboard.writeText(text).then(function () {
+    alert('Скрипт скопирован');
+  });
+}
+</script>
+{% endblock %}

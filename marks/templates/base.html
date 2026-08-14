@@ -31,6 +31,14 @@
           <li class="nav-item"><a class="nav-link" href="{% url 'tasks_board' %}">Задачи</a></li>
           <li class="nav-item"><a class="nav-link" href="{% url 'experiments_board' %}">Эксперименты</a></li>
           <li class="nav-item"><a class="nav-link" href="{% url 'marks_registry' %}">Метки</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">TikTok-воронки</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{% url 'tiktok_apply' %}">Заявка</a></li>
+              <li><a class="dropdown-item" href="{% url 'tiktok_panel' %}">Дев-панель</a></li>
+              <li><a class="dropdown-item" href="{% url 'tiktok_accounts' %}">Кабинеты</a></li>
+            </ul>
+          </li>
         {% endif %}
       </ul>
       <ul class="navbar-nav ms-auto">

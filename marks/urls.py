@@ -2,7 +2,7 @@ from django.urls import path
 from django.shortcuts import redirect
 from django.contrib.auth import views as auth_views
 from django.views.decorators.cache import never_cache
-from marks import views, views_products
+from marks import views, views_products, views_tiktok
 
 
 def root_redirect(request):
@@ -61,4 +61,16 @@ urlpatterns = [
     path("product/<int:product_id>/reports/", views.product_reports, name="product_reports"),
     path("update_field/", views.update_field, name="update_field"),
     path("telegram/webhook/<str:webhook_key>/", views.telegram_webhook, name="telegram_webhook"),
+
+    # --- Раздел TikTok-воронок ---
+    path("tiktok/apply/", views_tiktok.tiktok_apply, name="tiktok_apply"),
+    path("tiktok/unlock/", views_tiktok.tiktok_unlock, name="tiktok_unlock"),
+    path("tiktok/panel/", views_tiktok.tiktok_panel, name="tiktok_panel"),
+    path("tiktok/<int:funnel_id>/update/", views_tiktok.tiktok_funnel_update, name="tiktok_funnel_update"),
+    path("tiktok/<int:funnel_id>/sync/", views_tiktok.tiktok_funnel_sync, name="tiktok_funnel_sync"),
+    path("tiktok/<int:funnel_id>/script/", views_tiktok.tiktok_funnel_script, name="tiktok_funnel_script"),
+    path("tiktok/<int:funnel_id>/utm/", views_tiktok.tiktok_funnel_utm, name="tiktok_funnel_utm"),
+    path("tiktok/accounts/", views_tiktok.tiktok_accounts, name="tiktok_accounts"),
+    path("tiktok/accounts/<str:account_no>/update/", views_tiktok.tiktok_account_update, name="tiktok_account_update"),
+    path("tiktok/accounts/<str:account_no>/delete/", views_tiktok.tiktok_account_delete, name="tiktok_account_delete"),
 ]

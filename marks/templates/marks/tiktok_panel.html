@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Дев-панель воронок{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Дев-панель TikTok-воронок</h2>
+  <div>
+    {% if hide_archived %}
+      <a class="btn btn-outline-secondary btn-sm" href="?archived=1">Показать архив</a>
+    {% else %}
+      <a class="btn btn-outline-secondary btn-sm" href="?">Скрыть архив</a>
+    {% endif %}
+    <a class="btn btn-outline-primary btn-sm" href="{% url 'tiktok_accounts' %}">Кабинеты</a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" style="min-width: 1500px;">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Эндпоинт</th>
+            <th>Оффер</th>
+            <th>Бот (URL)</th>
+            <th>Тип</th>
+            <th>Pixel</th>
+            <th>Кабинет</th>
+            <th>utm_source</th>
+            <th>utm_medium</th>
+            <th>utm_term</th>
+            <th>Коммент</th>
+            <th title="В сейлботе достроен экспорт — обязательно для активации">Экспорт</th>
+            <th>Статус</th>
+            <th>Склад</th>
+            <th style="min-width: 210px;">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in funnels %}
+          <tr>
+            <td class="text-muted">
+              <form id="edit-{{ f.id }}" method="post" action="{% url 'tiktok_funnel_update' f.id %}">{% csrf_token %}</form>
+              {{ f.id }}
+            </td>
+            <td><input form="edit-{{ f.id }}" name="landing_endpoint" value="{{ f.landing_endpoint|default:'' }}" class="form-control form-control-sm" style="min-width:150px" placeholder="/path"></td>
+            <td><input form="edit-{{ f.id }}" name="offer" value="{{ f.offer }}" class="form-control form-control-sm" style="min-width:110px"></td>
+            <td><input form="edit-{{ f.id }}" name="bot_url" value="{{ f.bot_url }}" class="form-control form-control-sm" style="min-width:160px"></td>
+            <td>
+              <select form="edit-{{ f.id }}" name="page_type" class="form-select form-select-sm" style="min-width:110px">
+                <option value="" {% if not f.page_type %}selected{% endif %}>—</option>
+                {% for val, label in page_types %}
+                  <option value="{{ val }}" {% if f.page_type == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input form="edit-{{ f.id }}" name="pixel_code" value="{{ f.pixel_code }}" class="form-control form-control-sm" style="min-width:110px"></td>
+            <td>
+              <input form="edit-{{ f.id }}" name="account_no" value="{{ f.account_no }}"
+                     class="form-control form-control-sm {% if f.account_no and f.account_no not in known_accounts %}is-invalid{% endif %}"
+                     style="min-width:80px" title="{% if f.account_no and f.account_no not in known_accounts %}Кабинет не заведён в «Кабинеты»{% endif %}">
+            </td>
+            <td><input form="edit-{{ f.id }}" name="utm_source" value="{{ f.utm_source }}" class="form-control form-control-sm" style="min-width:100px"></td>
+            <td><input form="edit-{{ f.id }}" name="utm_medium" value="{{ f.utm_medium }}" class="form-control form-control-sm" style="min-width:100px"></td>
+            <td><input form="edit-{{ f.id }}" name="utm_term" value="{{ f.utm_term }}" class="form-control form-control-sm" style="min-width:100px"></td>
+            <td><input form="edit-{{ f.id }}" name="comment" value="{{ f.comment }}" class="form-control form-control-sm" style="min-width:120px"></td>
+            <td class="text-center">
+              <div class="form-check d-flex justify-content-center mb-0">
+                <input form="edit-{{ f.id }}" type="checkbox" name="salebot_export_ready" class="form-check-input"
+                       title="В сейлботе достроен экспорт" {% if f.salebot_export_ready %}checked{% endif %}>
+              </div>
+            </td>
+            <td>
+              <select form="edit-{{ f.id }}" name="status" class="form-select form-select-sm" style="min-width:150px">
+                {% for val, label in statuses %}
+                  <option value="{{ val }}" {% if f.status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              {% if f.warehouse_synced %}
+                <span class="badge text-bg-light text-success">в складе</span>
+              {% else %}
+                <span class="badge text-bg-warning text-dark">нет</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                <button form="edit-{{ f.id }}" class="btn btn-primary btn-sm">Сохранить</button>
+                <form method="post" action="{% url 'tiktok_funnel_sync' f.id %}">{% csrf_token %}
+                  <button class="btn btn-outline-secondary btn-sm">В склад</button>
+                </form>
+                <a class="btn btn-outline-dark btn-sm" href="{% url 'tiktok_funnel_script' f.id %}">Скрипт</a>
+                <a class="btn btn-outline-dark btn-sm" href="{% url 'tiktok_funnel_utm' f.id %}">UTM</a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="15" class="text-center text-muted py-4">Воронок пока нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="small text-muted mt-2">
+  В статус «Активна» переводится только воронка с отметкой <b>«Экспорт»</b> (в сейлботе достроен экспорт)
+  и с заданным <code>account_no</code>, который заведён в «Кабинеты».
+  Правки любого поля сохраняются кнопкой «Сохранить» в строке и сразу уходят в склад.
+</div>
+{% endblock %}
