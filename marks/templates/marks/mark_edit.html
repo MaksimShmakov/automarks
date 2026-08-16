@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Редактирование метки{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Редактирование метки</h3>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'marks_registry' %}">← Реестр</a>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-body p-4">
+        <dl class="row mb-3 small">
+          <dt class="col-sm-3">campaign</dt><dd class="col-sm-9"><code>{{ mark.utm_campaign }}</code></dd>
+          <dt class="col-sm-3">source / medium</dt><dd class="col-sm-9">{{ mark.utm_source }} / {{ mark.utm_medium }}</dd>
+          <dt class="col-sm-3">Автор</dt><dd class="col-sm-9">{{ mark.author.username|default:"—" }}</dd>
+        </dl>
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-bold">{{ form.original_url.label }}</label>
+            {{ form.original_url }}
+            <div class="form-text">UTM-метки не меняются — пересоберётся только полная ссылка{% if mark.short_link %} (и цель короткой){% endif %}.</div>
+            {% for error in form.original_url.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a class="btn btn-outline-secondary" href="{% url 'marks_registry' %}">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

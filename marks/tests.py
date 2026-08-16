@@ -1927,3 +1927,56 @@ class NotificationRetryTests(TestCase):
         note = OutboundNotification.objects.get()
         self.assertFalse(note.delivered)
         self.assertEqual(note.attempts, 1)
+
+
+class MarkEditTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.mkt = user_model.objects.create_user(username="lena", password="StrongPass123!")
+        self.mkt.profile.role = UserProfile.Role.MARKETER
+        self.mkt.profile.save(update_fields=["role"])
+        self.other = user_model.objects.create_user(username="dima", password="StrongPass123!")
+        self.other.profile.role = UserProfile.Role.MARKETER
+        self.other.profile.save(update_fields=["role"])
+        self.admin = user_model.objects.create_user(username="boss", password="StrongPass123!")
+        self.admin.profile.role = UserProfile.Role.ADMIN
+        self.admin.profile.save(update_fields=["role"])
+
+        self.short = ShortLink.objects.create(target_url="https://el-ed.ru/oge?utm_source=yandex")
+        self.mark = MarkedLink.objects.create(
+            original_url="https://el-ed.ru/oge",
+            utm_source="yandex", utm_medium="cpc", utm_campaign="acq_oge_bot_x",
+            utm_term="t", utm_content="",
+            mark_type="acq", direction="oge", funnel="bot", name="x",
+            full_url="https://el-ed.ru/oge?utm_source=yandex&utm_medium=cpc&utm_campaign=acq_oge_bot_x&utm_term=t",
+            short_link=self.short, author=self.mkt,
+        )
+
+    def test_owner_edits_url_and_recomputes_full_and_short(self):
+        self.client.force_login(self.mkt)
+        response = self.client.post(reverse("mark_edit", args=[self.mark.id]), {"original_url": "https://el-ed.ru/ege"})
+        self.assertRedirects(response, reverse("marks_registry"))
+        self.mark.refresh_from_db()
+        self.assertEqual(self.mark.original_url, "https://el-ed.ru/ege")
+        self.assertTrue(self.mark.full_url.startswith("https://el-ed.ru/ege?utm_source=yandex"))
+        self.short.refresh_from_db()
+        self.assertEqual(self.short.target_url, self.mark.full_url)
+
+    def test_other_marketer_cannot_edit(self):
+        self.client.force_login(self.other)
+        response = self.client.post(reverse("mark_edit", args=[self.mark.id]), {"original_url": "https://el-ed.ru/ege"})
+        self.assertEqual(response.status_code, 403)
+        self.mark.refresh_from_db()
+        self.assertEqual(self.mark.original_url, "https://el-ed.ru/oge")
+
+    def test_admin_can_edit_any(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("mark_edit", args=[self.mark.id]), {"original_url": "https://el-ed.ru/ege"})
+        self.assertRedirects(response, reverse("marks_registry"))
+
+    def test_cyrillic_url_rejected(self):
+        self.client.force_login(self.mkt)
+        response = self.client.post(reverse("mark_edit", args=[self.mark.id]), {"original_url": "https://el-ed.ru/огэ"})
+        self.assertEqual(response.status_code, 200)
+        self.mark.refresh_from_db()
+        self.assertEqual(self.mark.original_url, "https://el-ed.ru/oge")

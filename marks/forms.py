@@ -771,3 +771,28 @@ class TagMarkForm(MarkForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields.pop("original_url", None)
+
+
+class MarkEditForm(forms.Form):
+    """Редактирование готовой метки: меняем только исходную ссылку (full_url пересоберётся)."""
+
+    CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
+
+    original_url = forms.CharField(
+        label="Исходная ссылка",
+        max_length=2000,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "https://el-ed.ru/oge"}),
+    )
+
+    def clean_original_url(self):
+        value = (self.cleaned_data.get("original_url") or "").strip()
+        if " " in value or self.CYRILLIC_RE.search(value):
+            raise forms.ValidationError("URL без пробелов и кириллицы.")
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError:
+            raise forms.ValidationError("URL только из ASCII-символов.")
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise forms.ValidationError("Нужен полный http(s) URL, например https://el-ed.ru/oge.")
+        return value

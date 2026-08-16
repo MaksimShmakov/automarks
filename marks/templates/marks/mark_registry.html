@@ -78,6 +78,7 @@
           <th class="text-end">Клики</th>
           <th>Автор</th>
           <th>Дата</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -97,9 +98,10 @@
           <td class="text-end">{% if link.short_link %}{{ link.short_link.clicks }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{{ link.author.username|default:"—" }}</td>
           <td>{{ link.created_at|date:"d.m.Y H:i" }}</td>
+          <td><a href="{% url 'mark_edit' link.id %}" class="btn btn-sm btn-outline-secondary">ред.</a></td>
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="text-center text-muted py-4">Меток пока нет. <a href="{% url 'marks_new' %}">Создать первую</a>.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">Меток пока нет. <a href="{% url 'marks_new' %}">Создать первую</a>.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -51,6 +51,7 @@ urlpatterns = [
     path("api/bot/<str:bot_name>/", views.bot_api, name="bot_api"),
     path("marks/", views.marks_registry, name="marks_registry"),
     path("marks/new/", views.marks_new, name="marks_new"),
+    path("marks/<int:mark_id>/edit/", views.mark_edit, name="mark_edit"),
     path("s/<str:code>/", views.short_link_redirect, name="short_link"),
     path("products/", views_products.products_list, name="products_list"),
     path("products/<int:product_id>/", views_products.product_detail, name="product_detail"),

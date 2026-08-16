@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group, User
+from django.core.exceptions import PermissionDenied
 from django.utils.dateparse import parse_date
 from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
@@ -47,6 +48,7 @@ from .forms import (
     TaskStatusForm,
     MarkForm,
     TagMarkForm,
+    MarkEditForm,
 )
 from .experiment_forms import ExperimentCompletionForm, ExperimentForm
 from .services.link_builder import build_campaign, build_full_url, validate_tag_utm_row
@@ -2252,3 +2254,36 @@ def marks_new(request):
 
     has_dictionary = UtmDictionaryEntry.objects.filter(is_active=True).exists()
     return render(request, "marks/mark_form.html", {"form": form, "has_dictionary": has_dictionary})
+
+
+@login_required
+@require_roles("admin", "manager", "marketer", "bot_user")
+def mark_edit(request, mark_id):
+    """Редактирование готовой метки: меняем исходную ссылку, пересобираем full_url и цель короткой."""
+    mark = get_object_or_404(MarkedLink.objects.select_related("short_link"), id=mark_id)
+    if not _can_see_all_marks(request.user) and mark.author_id != request.user.id:
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = MarkEditForm(request.POST)
+        if form.is_valid():
+            new_url = form.cleaned_data["original_url"]
+            utm = {
+                "utm_source": mark.utm_source,
+                "utm_medium": mark.utm_medium,
+                "utm_campaign": mark.utm_campaign,
+                "utm_term": mark.utm_term,
+                "utm_content": mark.utm_content,
+            }
+            mark.original_url = new_url
+            mark.full_url = build_full_url(new_url, utm)
+            mark.save(update_fields=["original_url", "full_url"])
+            if mark.short_link is not None:
+                mark.short_link.target_url = mark.full_url
+                mark.short_link.save(update_fields=["target_url"])
+            messages.success(request, "Исходная ссылка обновлена.")
+            return redirect("marks_registry")
+    else:
+        form = MarkEditForm(initial={"original_url": mark.original_url})
+
+    return render(request, "marks/mark_edit.html", {"form": form, "mark": mark})
