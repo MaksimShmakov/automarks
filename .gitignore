@@ -17,6 +17,7 @@ staticfiles/
 # VSCode / IDE
 .idea/
 .vscode/
+.claude/
 
 # Environment
 .env

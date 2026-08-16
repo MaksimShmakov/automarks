@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Доступ к дев-панели{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-5">
+    <h2 class="mb-3">Дев-панель воронок</h2>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <p class="text-muted">Введите токен доступа к Дев-панели и Кабинетам.</p>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next }}">
+          <div class="mb-3">
+            <input type="password" name="token" class="form-control" placeholder="Токен" autofocus>
+          </div>
+          <button class="btn btn-primary w-100">Войти</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

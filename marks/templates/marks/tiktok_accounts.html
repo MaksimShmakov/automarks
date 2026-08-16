@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}TikTok-кабинеты{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">TikTok-кабинеты</h2>
+  <a class="btn btn-outline-primary btn-sm" href="{% url 'tiktok_panel' %}">← Дев-панель</a>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-light"><b>Новый кабинет</b></div>
+      <div class="card-body">
+        <form method="post" class="row g-3" autocomplete="off">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">Номер кабинета (account_no)</label>
+            {{ form.account_no }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">advertiser_id</label>
+            {{ form.advertiser_id }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">access_token</label>
+            {{ form.access_token }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Заметка</label>
+            {{ form.note }}
+          </div>
+          {% if form.errors %}
+            <div class="col-12"><div class="alert alert-danger mb-0">{{ form.errors }}</div></div>
+          {% endif %}
+          <div class="col-12"><button class="btn btn-primary w-100">Добавить</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-light"><b>Кабинеты</b></div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0" style="min-width: 760px;">
+            <thead class="table-light">
+              <tr><th>№</th><th>advertiser_id</th><th>access_token</th><th>Заметка</th><th style="min-width:170px;">Действия</th></tr>
+            </thead>
+            <tbody>
+              {% for a in accounts %}
+              <tr>
+                <td class="text-nowrap">
+                  <form id="acc-{{ a.account_no }}" method="post" action="{% url 'tiktok_account_update' a.account_no %}">{% csrf_token %}</form>
+                  <b>{{ a.account_no }}</b>
+                </td>
+                <td><input form="acc-{{ a.account_no }}" name="advertiser_id" value="{{ a.advertiser_id }}" class="form-control form-control-sm"></td>
+                <td><input form="acc-{{ a.account_no }}" name="access_token" value="{{ a.access_token }}" class="form-control form-control-sm" style="min-width:200px"></td>
+                <td><input form="acc-{{ a.account_no }}" name="note" value="{{ a.note }}" class="form-control form-control-sm"></td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <button form="acc-{{ a.account_no }}" class="btn btn-primary btn-sm">Сохранить</button>
+                    <form method="post" action="{% url 'tiktok_account_delete' a.account_no %}" onsubmit="return confirm('Удалить кабинет №{{ a.account_no }}?');">
+                      {% csrf_token %}
+                      <button class="btn btn-outline-danger btn-sm">Удалить</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="text-center text-muted py-4">Кабинетов пока нет.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1980,3 +1980,12 @@ class MarkEditTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.mark.refresh_from_db()
         self.assertEqual(self.mark.original_url, "https://el-ed.ru/oge")
+
+
+class TtFunnelsUrlTests(TestCase):
+    def test_methodichka_url_serves_funnels_apply(self):
+        user = get_user_model().objects.create_user(username="mktr_tt", password="StrongPass123!")
+        self.client.force_login(user)
+        response = self.client.get("/tt/funnels/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "marks/tiktok_apply.html")

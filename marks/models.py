@@ -1,7 +1,7 @@
 import re
 import secrets
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 from django.db import models
@@ -633,3 +633,149 @@ class UserProfile(models.Model):
 def create_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
+
+
+# ---------------------------------------------------------------------------
+# Раздел «TikTok-воронки» — порт standalone-сервиса el-tiktok-funnels-auto.
+#
+# Источник правды — эти таблицы в БД automarks. При create/update воронки или
+# кабинета строка дублируется в удалённый склад (activation_data.tt_funnels /
+# tiktok_accounts) синхронным POST-ом в вебхук n8n `funnel-sync` — automarks в
+# склад напрямую не пишет (см. marks.services.tiktok_sync).
+# ---------------------------------------------------------------------------
+
+
+class TikTokAccount(models.Model):
+    """Рекламный кабинет TikTok — CRUD-ресурс. Токен 1:1 с кабинетом.
+
+    Ключ — внутренний номер кабинета (свободная строка). Пиксели/воронки
+    ссылаются на кабинет через account_no (без FK). Ротация токена — UPDATE
+    одной строки. Заменяет кривую tiktok_tokens (там ключом был pixel_code).
+    """
+
+    account_no = models.CharField(max_length=255, primary_key=True)
+    advertiser_id = models.CharField(max_length=255, blank=True, default="")
+    access_token = models.CharField(max_length=500)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["account_no"]
+        verbose_name = "TikTok-кабинет"
+        verbose_name_plural = "TikTok-кабинеты"
+
+    def __str__(self):
+        return f"№{self.account_no}"
+
+
+class TikTokFunnelRequest(models.Model):
+    """Воронка = один лендинг (landing_endpoint = location.pathname).
+
+    Черновик создаёт маркетолог (status='pending'); разработчик дозаполняет
+    pixel_code + account_no (кабинет с токеном), page_type и utm, затем переводит
+    в 'active'. В active можно перевести только если account_no задан и такой
+    кабинет заведён (guard во вьюхе) — иначе события CAPI молча не пойдут.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает подключения"
+        ACTIVE = "active", "Активна"
+        ARCHIVED = "archived", "В архиве"
+
+    class PageType(models.TextChoices):
+        BUTTON = "button", "С кнопкой"
+        MIRROR = "mirror", "Зеркало"
+
+    # Суррогатный ключ (default id): воронка создаётся раньше, чем известен эндпоинт.
+    # Эндпоинт лендинга — уникальный, но дозаполняется позже (дизайнер), потому nullable.
+    landing_endpoint = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="location.pathname лендинга, например /pasha_all",
+    )
+    offer = models.CharField(max_length=255, blank=True, default="", help_text="Оффер/метка, например ell010005")
+    bot_url = models.CharField(max_length=500, blank=True, default="", help_text="Ссылка на бота")
+    bot_name = models.CharField(max_length=255, blank=True, default="")
+    # Тип лендинга — какой JS-шаблон генерить: 'button' | 'mirror'.
+    page_type = models.CharField(max_length=20, choices=PageType.choices, blank=True, default="")
+    # event_source_id. Свободная строка, может шариться между воронками.
+    pixel_code = models.CharField(max_length=255, blank=True, default="")
+    # Какой кабинет (→ токен) шлёт события этой воронки. Свободная строка без FK:
+    # проверка существования кабинета — только при активации (guard во вьюхе).
+    account_no = models.CharField(max_length=255, blank=True, default="")
+    # Кастомные UTM (вводит таргетолог/маркетолог). Остальные — макросы TikTok.
+    utm_source = models.CharField(max_length=255, blank=True, default="")
+    utm_medium = models.CharField(max_length=255, blank=True, default="")
+    utm_term = models.CharField(max_length=255, blank=True, default="")
+    comment = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    # Оператор подтвердил, что в Salebot достроен экспорт событий. Без галочки
+    # воронку нельзя перевести в active (guard во вьюхе): иначе она «активна», а
+    # покупки/события из бота не выгружаются и CAPI-конверсии не долетают.
+    salebot_export_ready = models.BooleanField(
+        default=False,
+        help_text="В сейлботе достроен экспорт — обязательно для активации",
+    )
+    # Долетело ли зеркало в склад activation_data (dual-write через n8n).
+    warehouse_synced = models.BooleanField(
+        default=False,
+        help_text="Строка воронки успешно записана в склад activation_data.tt_funnels",
+    )
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "TikTok-воронка"
+        verbose_name_plural = "TikTok-воронки"
+
+    def __str__(self):
+        return f"{self.landing_endpoint or ('#' + str(self.id))} ({self.get_status_display()})"
+
+    @staticmethod
+    def normalize_endpoint(raw):
+        """Свести любой ввод к голому ``/path`` = location.pathname.
+
+        Срезает scheme/домен, query и fragment, схлопывает хвостовой слэш и
+        гарантирует один ведущий слэш. Должно совпадать с тем, что лендинг-скрипт
+        пишет в visits_data.landing_endpoint, иначе JOIN в складе не сматчится.
+        Пустой ввод → "" (во вьюхе трактуется как None).
+        """
+        value = (raw or "").strip()
+        if not value:
+            return ""
+
+        if "://" in value:
+            value = urlsplit(value).path
+        else:
+            head = value.split("/", 1)[0]
+            if "." in head and " " not in head:
+                value = urlsplit("//" + value).path
+            else:
+                value = value.split("?", 1)[0].split("#", 1)[0]
+
+        value = value.strip()
+        if not value:
+            return ""
+        if not value.startswith("/"):
+            value = "/" + value
+        if len(value) > 1:
+            value = "/" + value.strip("/")
+        return value
+
+    @staticmethod
+    def parse_bot_name(bot_url):
+        """Достать голый идентификатор бота из ссылки.
+
+        ``https://telegram.me/efir_tt_el_bot`` -> ``efir_tt_el_bot``; терпит
+        хвостовой слэш, query и префиксы ``@``/``+``.
+        """
+        raw = (bot_url or "").strip()
+        if not raw:
+            return ""
+        path = urlsplit(raw if "://" in raw else "//" + raw).path
+        segment = path.rstrip("/").rsplit("/", 1)[-1]
+        return segment.lstrip("@+").strip()

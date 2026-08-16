@@ -15,6 +15,8 @@ from .models import (
     UtmDictionaryEntry,
     MarkedLink,
     OutboundNotification,
+    TikTokAccount,
+    TikTokFunnelRequest,
 )
 
 
@@ -121,3 +123,16 @@ class OutboundNotificationAdmin(admin.ModelAdmin):
     list_filter = ("delivered",)
     search_fields = ("chat_id", "text", "last_error")
     readonly_fields = ("created_at", "delivered_at")
+
+
+@admin.register(TikTokAccount)
+class TikTokAccountAdmin(admin.ModelAdmin):
+    list_display = ("account_no", "advertiser_id", "note", "created_at")
+    search_fields = ("account_no", "advertiser_id", "note")
+
+
+@admin.register(TikTokFunnelRequest)
+class TikTokFunnelRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "landing_endpoint", "offer", "page_type", "account_no", "pixel_code", "status", "salebot_export_ready", "warehouse_synced", "created_by", "created_at")
+    list_filter = ("status", "page_type", "salebot_export_ready", "warehouse_synced")
+    search_fields = ("landing_endpoint", "offer", "bot_url", "account_no", "pixel_code")
