@@ -49,8 +49,18 @@ BUTTON_TEMPLATE = r"""<!-- Метрика: вставить перед осно�
     return false;
   }
   (function poll(a){ if(sendParamsToMetrika())return; if(a>=30)return; setTimeout(function(){poll(a+1);}, 500); })(0);
+  // TikTok events.js патчит window.fetch и роняет кастомный заголовок
+  // X-Webhook-Token. Берём непатченный fetch из скрытого iframe.
+  var NATIVE_FETCH=null,_nfInit=false;
+  function _nativeFetch(){
+    if(_nfInit)return NATIVE_FETCH; _nfInit=true;
+    try{var f=document.createElement('iframe');f.style.display='none';(document.body||document.documentElement).appendChild(f);NATIVE_FETCH=f.contentWindow.fetch.bind(f.contentWindow);}catch(e){NATIVE_FETCH=null;}
+    return NATIVE_FETCH;
+  }
   function sendToWebhook(p){
-    try{fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json','X-WebhookToken':WEBHOOK_TOKEN},body:JSON.stringify(p),keepalive:true}).catch(function(e){console.warn(e);});}catch(e){}
+    var opts={method:'POST',headers:{'Content-Type':'application/json','X-Webhook-Token':WEBHOOK_TOKEN},body:JSON.stringify(p),keepalive:true};
+    var f=_nativeFetch()||window.fetch;
+    try{f(WEBHOOK_URL,opts).catch(function(e){console.warn(e);});}catch(e){try{window.fetch(WEBHOOK_URL,opts);}catch(e2){}}
   }
   function handleClick(e){
     var a=e.target&&e.target.closest&&e.target.closest('a[href*="'+BOT_NAME+'"]');
@@ -121,8 +131,18 @@ MIRROR_TEMPLATE = r"""<!-- Метрика: желательна, но не об�
     }
     return false;
   }
+  // TikTok events.js патчит window.fetch и роняет кастомный заголовок
+  // X-Webhook-Token. Берём непатченный fetch из скрытого iframe.
+  var NATIVE_FETCH=null,_nfInit=false;
+  function _nativeFetch(){
+    if(_nfInit)return NATIVE_FETCH; _nfInit=true;
+    try{var f=document.createElement('iframe');f.style.display='none';(document.body||document.documentElement).appendChild(f);NATIVE_FETCH=f.contentWindow.fetch.bind(f.contentWindow);}catch(e){NATIVE_FETCH=null;}
+    return NATIVE_FETCH;
+  }
   function sendToWebhook(p){
-    try{fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json','X-WebhookToken':WEBHOOK_TOKEN},body:JSON.stringify(p),keepalive:true}).catch(function(e){console.warn(e);});}catch(e){}
+    var opts={method:'POST',headers:{'Content-Type':'application/json','X-Webhook-Token':WEBHOOK_TOKEN},body:JSON.stringify(p),keepalive:true};
+    var f=_nativeFetch()||window.fetch;
+    try{f(WEBHOOK_URL,opts).catch(function(e){console.warn(e);});}catch(e){try{window.fetch(WEBHOOK_URL,opts);}catch(e2){}}
   }
   var redirected=false;
   function go(){
