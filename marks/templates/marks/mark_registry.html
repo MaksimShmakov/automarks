@@ -84,7 +84,7 @@
       <tbody>
         {% for link in links %}
         <tr>
-          <td><code>{{ link.utm_campaign }}</code>{% if link.pending_review %} <span class="badge bg-warning text-dark">на заявку</span>{% endif %}</td>
+          <td><code>{{ link.utm_campaign }}</code></td>
           <td>{{ link.utm_source }}</td>
           <td>{{ link.utm_medium }}</td>
           <td class="text-truncate" style="max-width: 320px;"><a href="{{ link.full_url }}" target="_blank" rel="noopener">{{ link.full_url }}</a></td>

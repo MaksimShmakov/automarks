@@ -758,8 +758,6 @@ def tags_list(request, branch_id):
                     branch.id,
                     {"tag_ids": [tag.id]},
                 )
-                if tag.pending_review:
-                    messages.warning(request, "Шаблонный source — метка помечена «на заявку Грише».")
                 messages.success(request, f"Метка {tag.number} создана")
                 return redirect("tags_list", branch_id=branch.id)
     else:
@@ -2242,8 +2240,6 @@ def marks_new(request):
                     author=request.user,
                 )
                 messages.success(request, "Метка создана и добавлена в реестр.")
-                if pending_review:
-                    messages.warning(request, "Шаблонный source — метка помечена «на заявку Грише».")
 
             messages.info(request, f"Полная ссылка: {mark.full_url}")
             if mark.short_link is not None:

@@ -44,7 +44,7 @@
           <div class="mb-3">
             <label class="form-label fw-bold">{{ form.source_custom.label }}</label>
             {{ form.source_custom }}
-            <div class="form-text">Заполняй только если выбрал шаблонный source (<code>tg-&lt;имя&gt;</code>, <code>&lt;partner&gt;</code> и т.п.) — такая метка уйдёт «на заявку Грише».</div>
+            <div class="form-text">Заполняй только если выбрал шаблонный source (<code>tg-&lt;имя&gt;</code>, <code>&lt;partner&gt;</code> и т.п.).</div>
             {% for error in form.source_custom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           </div>
 
