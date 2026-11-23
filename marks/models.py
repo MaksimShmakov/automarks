@@ -34,6 +34,7 @@ class Bot(models.Model):
     class Platform(models.TextChoices):
         TELEGRAM = "tg", "Telegram"
         VK = "vk", "VK"
+        MAX = "max", "MAX"
 
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="bots")
     platform = models.CharField(max_length=10, choices=Platform.choices, default=Platform.TELEGRAM)
@@ -72,6 +73,7 @@ class Bot(models.Model):
         order = {
             self.Platform.TELEGRAM: 0,
             self.Platform.VK: 1,
+            self.Platform.MAX: 2,
         }
         return order.get(self.platform, 99)
 
@@ -83,6 +85,8 @@ class Bot(models.Model):
             if ref_source not in {None, ""}:
                 params["ref_source"] = str(ref_source)
             return f"https://vk.com/write-{identifier}?{urlencode(params)}"
+        if self.platform == self.Platform.MAX:
+            return f"https://max.ru/{identifier}?start={tag_number}"
         return f"{TELEGRAM_LINK_DOMAIN}/{identifier}?start={tag_number}"
 
 

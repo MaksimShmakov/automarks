@@ -644,7 +644,7 @@ def bots_list(request):
     inactive_bots = [bot for bot in bots if not bot.is_active]
     if request.method == "POST":
         form_type = (request.POST.get("form_type") or "telegram").strip()
-        telegram_form = BotForm(prefix="tg")
+        bot_form = BotForm(prefix="tg")
         vk_form = VKBotForm(prefix="vk")
         if form_type == "vk":
             vk_form = VKBotForm(request.POST, prefix="vk")
@@ -653,13 +653,13 @@ def bots_list(request):
                 messages.success(request, "VK бот создан.")
                 return redirect("bots_list")
         else:
-            telegram_form = BotForm(request.POST, prefix="tg")
-            if telegram_form.is_valid():
-                telegram_form.save()
-                messages.success(request, "Telegram бот создан.")
+            bot_form = BotForm(request.POST, prefix="tg")
+            if bot_form.is_valid():
+                bot = bot_form.save()
+                messages.success(request, f"{bot.get_platform_display()} бот создан.")
                 return redirect("bots_list")
     else:
-        telegram_form = BotForm(prefix="tg")
+        bot_form = BotForm(prefix="tg")
         vk_form = VKBotForm(prefix="vk")
     return render(
         request,
@@ -667,7 +667,7 @@ def bots_list(request):
         {
             "active_bots": active_bots,
             "inactive_bots": inactive_bots,
-            "telegram_form": telegram_form,
+            "bot_form": bot_form,
             "vk_form": vk_form,
         },
     )

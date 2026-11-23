@@ -103,22 +103,29 @@
   <div class="col-12 col-xl-6">
     <div class="card shadow-sm h-100">
       <div class="card-header bg-light">
-        <h5 class="mb-0">Создать Telegram-бота</h5>
+        <h5 class="mb-0">Создать бота Telegram / MAX</h5>
       </div>
       <div class="card-body">
         <form method="post" class="row g-3">
           {% csrf_token %}
           <input type="hidden" name="form_type" value="telegram">
           <div class="col-12">
-            <label class="form-label">{{ telegram_form.name.label }}</label>
-            {{ telegram_form.name|add_class:"form-control" }}
-            <div class="form-text">Можно вводить с @ или без. В API и ссылках будет использоваться username без @.</div>
-            {% for error in telegram_form.name.errors %}
+            <label class="form-label" for="{{ bot_form.platform.id_for_label }}">{{ bot_form.platform.label }}</label>
+            {{ bot_form.platform|add_class:"form-select" }}
+            {% for error in bot_form.platform.errors %}
             <div class="invalid-feedback d-block">{{ error }}</div>
             {% endfor %}
           </div>
           <div class="col-12">
-            <button type="submit" class="btn btn-primary">Создать Telegram-бота</button>
+            <label class="form-label" for="{{ bot_form.name.id_for_label }}">{{ bot_form.name.label }}</label>
+            {{ bot_form.name|add_class:"form-control" }}
+            <div class="form-text">Для MAX введите ник из публичной ссылки https://max.ru/ник, без адреса сайта. Можно вводить с @ или без. В API и ссылках будет использоваться ник без @.</div>
+            {% for error in bot_form.name.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Создать бота</button>
           </div>
         </form>
       </div>

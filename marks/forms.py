@@ -106,27 +106,43 @@ class CustomUserCreationForm(UserCreationForm):
 
 
 class BotForm(forms.ModelForm):
+    platform = forms.ChoiceField(
+        label="Мессенджер",
+        choices=[
+            (Bot.Platform.TELEGRAM, "Telegram"),
+            (Bot.Platform.MAX, "MAX"),
+        ],
+        initial=Bot.Platform.TELEGRAM,
+        required=False,
+    )
+
     class Meta:
         model = Bot
-        fields = ["name"]
+        fields = ["platform", "name"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["name"].label = "Username бота"
         self.fields["name"].widget.attrs["placeholder"] = "@new_bot"
 
+    def clean_platform(self):
+        # Older clients submit only the username; keep their Telegram default.
+        return self.cleaned_data.get("platform") or Bot.Platform.TELEGRAM
+
     def clean_name(self):
         value = " ".join((self.cleaned_data.get("name") or "").strip().split())
         value = value.lstrip("@")
         if not value:
             raise forms.ValidationError("Укажите username бота.")
-        if re.fullmatch(r"[A-Za-z0-9_]{5,32}", value) is None:
+        if self.cleaned_data.get("platform") == Bot.Platform.MAX:
+            if re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
+                raise forms.ValidationError("Введите ник из ссылки MAX без https://max.ru/: латиница, цифры, _ и дефис.")
+        elif re.fullmatch(r"[A-Za-z0-9_]{5,32}", value) is None:
             raise forms.ValidationError("Username Telegram должен содержать 5-32 символа: буквы, цифры и _.")
         return value
 
     def save(self, commit=True):
         obj = super().save(commit=False)
-        obj.platform = Bot.Platform.TELEGRAM
         obj.display_name = ""
         if commit:
             obj.save()

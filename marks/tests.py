@@ -15,7 +15,7 @@ from openpyxl import load_workbook
 
 from django.core.management import call_command
 
-from .forms import BranchForm, MarkForm
+from .forms import BotForm, BranchForm, MarkForm
 from .models import (
     Bot,
     Branch,
@@ -821,6 +821,148 @@ class BotPlatformTests(TaskBoardBaseTestCase):
         self.assertEqual(response.status_code, 200)
         ordered_platforms = [bot.platform for bot in response.context["active_bots"]]
         self.assertEqual(ordered_platforms[:3], [Bot.Platform.TELEGRAM, Bot.Platform.TELEGRAM, Bot.Platform.VK])
+
+
+class MaxBotTests(TaskBoardBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin_user)
+
+    def test_max_bot_branch_and_tag_forms_share_saved_url_with_table_and_api(self):
+        _seed_min_dictionary()
+        existing_telegram_tag = self.branch_main.tags.get()
+        existing_telegram_url = existing_telegram_tag.url
+        response = self.client.post(
+            reverse("bots_list"),
+            {"form_type": "telegram", "tg-platform": "max", "tg-name": "@school_demo_bot"},
+            follow=True,
+        )
+        self.assertContains(response, "MAX бот создан.")
+        bot = Bot.objects.get(name="school_demo_bot")
+        self.assertEqual(bot.platform, Bot.Platform.MAX)
+
+        response = self.client.post(
+            reverse("branches_list", args=[bot.pk]),
+            {"name": "Основная", "code": "ell01"},
+        )
+        self.assertEqual(response.status_code, 302)
+        branch = bot.branches.get()
+        first_tag = branch.tags.get()
+        self.assertEqual(first_tag.number, "ell010001")
+        self.assertEqual(first_tag.url, "https://max.ru/school_demo_bot?start=ell010001")
+
+        response = self.client.post(
+            reverse("tags_list", args=[branch.pk]),
+            {
+                "create_tag": "1",
+                "source": "yandex",
+                "medium": "cpc",
+                "mark_type": "acq",
+                "direction": "oge",
+                "funnel": "bot",
+                "name": "pyweek2026",
+                "utm_term": "interests",
+                "utm_content": "ad-456",
+                "budget": "100.00",
+            },
+        )
+        self.assertRedirects(response, reverse("tags_list", args=[branch.pk]))
+        self.assertEqual(branch.tags.count(), 2)
+        tag = branch.tags.get(number="ell010002")
+        expected_url = "https://max.ru/school_demo_bot?start=ell010002"
+        self.assertEqual(tag.url, expected_url)
+        expected_utm = {
+            "utm_source": "yandex",
+            "utm_medium": "cpc",
+            "utm_campaign": "acq_oge_bot_pyweek2026",
+            "utm_term": "interests",
+            "utm_content": "ad-456",
+        }
+        for field, value in expected_utm.items():
+            self.assertEqual(getattr(tag, field), value)
+
+        table = self.client.get(reverse("tags_list", args=[branch.pk]))
+        self.assertContains(
+            table,
+            f'<a href="{expected_url}" target="_blank" class="link-primary">{expected_url}</a>',
+            html=True,
+        )
+        # The public API resolves MAX by its normalized nickname, just like Telegram.
+        self.client.logout()
+        response = self.client.get("/api/bot/school_demo_bot/?number=ell010002")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["number"], tag.number)
+        self.assertEqual(payload["url"], tag.url)
+        for field, value in expected_utm.items():
+            self.assertEqual(payload[field], value)
+        response = self.client.get("/api/bot/school_demo_bot/")
+        self.assertEqual(response.status_code, 200)
+        tags = response.json()["branches"][0]["tags"]
+        self.assertEqual(next(item for item in tags if item["number"] == tag.number)["url"], tag.url)
+
+        first_tag.refresh_from_db()
+        self.assertEqual(first_tag.url, "https://max.ru/school_demo_bot?start=ell010001")
+        existing_telegram_tag.refresh_from_db()
+        self.assertEqual(existing_telegram_tag.url, existing_telegram_url)
+
+    def test_max_nickname_without_at_sign(self):
+        response = self.client.post(
+            reverse("bots_list"),
+            {"tg-platform": "max", "tg-name": "school_demo_bot"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Bot.objects.get(name="school_demo_bot").platform, Bot.Platform.MAX)
+
+    def test_telegram_explicit_and_legacy_form_requests(self):
+        for index, platform in enumerate(("tg", "", None)):
+            with self.subTest(platform=platform):
+                name = f"telegram_bot_{index}"
+                data = {"tg-name": f"@{name}"}
+                if platform is not None:
+                    data["tg-platform"] = platform
+                response = self.client.post(reverse("bots_list"), data)
+                self.assertEqual(response.status_code, 302)
+                bot = Bot.objects.get(name=name)
+                self.assertEqual(bot.platform, Bot.Platform.TELEGRAM)
+                branch = Branch.objects.create(bot=bot, name="Main", code="ell01")
+                self.assertEqual(branch.tags.get().url, f"https://telegram.me/{name}?start=ell010001")
+
+    def test_creation_form_offers_max_and_defaults_to_telegram(self):
+        response = self.client.get(reverse("bots_list"))
+        self.assertContains(response, '<option value="tg" selected>Telegram</option>', html=True)
+        self.assertContains(response, '<option value="max">MAX</option>', html=True)
+        self.assertContains(response, 'name="tg-platform"')
+        self.assertContains(response, 'name="vk-name"')
+
+    def test_name_remains_unique_across_platforms_after_normalization(self):
+        response = self.client.post(
+            reverse("bots_list"),
+            {"tg-platform": "max", "tg-name": "@test_bot_name"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("name", response.context["bot_form"].errors)
+        self.assertEqual(Bot.objects.filter(name="test_bot_name").count(), 1)
+        self.bot.refresh_from_db()
+        self.assertEqual(self.bot.platform, Bot.Platform.TELEGRAM)
+
+    def test_max_nickname_cannot_inject_url_components(self):
+        for name in ("", "@", "https://max.ru/school_demo_bot", "bot?start=other", "bot/path", "bot#fragment", "bot name"):
+            with self.subTest(name=name):
+                form = BotForm({"platform": "max", "name": name})
+                self.assertFalse(form.is_valid())
+                self.assertIn("name", form.errors)
+
+    def test_shared_form_rejects_unknown_platform_and_keeps_vk_separate(self):
+        for platform in ("unknown", "vk"):
+            with self.subTest(platform=platform):
+                response = self.client.post(
+                    reverse("bots_list"),
+                    {"tg-platform": platform, "tg-name": "school_demo_bot"},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("platform", response.context["bot_form"].errors)
+                self.assertFalse(Bot.objects.filter(name="school_demo_bot").exists())
 
 
 class ExperimentBoardTests(TaskBoardBaseTestCase):
